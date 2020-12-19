@@ -18,9 +18,9 @@ namespace fs = std::filesystem;
 struct string_hash {
     std::size_t operator()(const std::string& s) const {
         if constexpr (sizeof(std::size_t) * CHAR_BIT == 32) {
-            return XXH32(s.data(), s.size(), 0xDEADBEEF);
+            return std::size_t(XXH3_64bits(s.data(), s.size()));
         } else if constexpr (sizeof(std::size_t) * CHAR_BIT == 64) {
-            return XXH64(s.data(), s.size(), 0xD0DEADC0FFEEBEEF);
+            return XXH3_64bits(s.data(), s.size());
         } else {
             throw std::exception("unsupported size of std::size_t");
         }
