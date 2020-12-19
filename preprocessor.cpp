@@ -416,11 +416,12 @@ bool preprocessor::write_output(std::string_view line) {
                     offset = size_t(it - line.begin());
                     count = 1;
                     s = state::IDENT;
-                } else if (*it == '"') {
-                    s = state::STRING;
-                } else if (*it == '\'') {
-                    s = state::NAME;
-                } else {
+                } else  {
+                    if (*it == '"') {
+                        s = state::STRING;
+                    } else if (*it == '\'') {
+                        s = state::NAME;
+                    }
                     _out->put(*it);
                 }
                 break;
@@ -442,10 +443,12 @@ bool preprocessor::write_output(std::string_view line) {
                     s = state::STRING_ESCAPE;
                 else if (*it == '"')
                     s = state::START;
+                _out->put(*it);
                 break;
 
             case state::STRING_ESCAPE:
                 s = state::STRING;
+                _out->put(*it);
                 break;
 
             case state::NAME:
@@ -453,10 +456,12 @@ bool preprocessor::write_output(std::string_view line) {
                     s = state::NAME_ESCAPE;
                 else if (*it == '\'')
                     s = state::START;
+                _out->put(*it);
                 break;
 
             case state::NAME_ESCAPE:
                 s = state::NAME;
+                _out->put(*it);
                 break;
         }
     }
