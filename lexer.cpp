@@ -147,6 +147,7 @@ line_end_cr:
     }
 
 line_end:
+    ++c;
     PRODUCE(LINE_END);
     ++line;
     goto dispatch;
@@ -479,8 +480,14 @@ not_operator:
     goto dispatch;
 
 tilde:
-    ++c;
-    PRODUCE(BIT_NOT);
+    if (++c == end) {
+        PRODUCE(BIT_NOT);
+    } else if (*c == '=') {
+        ++c;
+        PRODUCE(ALMOST);
+    } else {
+        PRODUCE(BIT_NOT);
+    }
     goto dispatch;
 
 less_than:
@@ -504,10 +511,20 @@ greater_than:
         ++c;
         PRODUCE(GT_EQ);
     } else if (*c == '>') {
-        ++c;
-        PRODUCE(SHR);
+        goto shift_right;
     } else {
         PRODUCE(GT);
+    }
+    goto dispatch;
+
+shift_right:
+    if (++c == end) {
+        PRODUCE(SHR);
+    } else if (*c == '>') {
+        ++c;
+        PRODUCE(SHR_UNSIGNED);
+    } else {
+        PRODUCE(SHR);
     }
     goto dispatch;
 
