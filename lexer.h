@@ -4,7 +4,7 @@
 #include <vector>
 #include "types.h"
 
-enum class token_type : char {
+enum class lexeme_type : char {
     LINE_COMMENT,
     BLOCK_COMMENT,
     IDENTIFIER,
@@ -63,16 +63,16 @@ enum class token_type : char {
     CLOSE_BRACKET,
 };
 
-struct token {
-    explicit token(token_type type, i32 line, std::string_view text) :
+struct lexeme {
+    explicit lexeme(lexeme_type type, i32 line, std::string_view text) :
         type(type), line(line), text(text) {}
 
-    token_type type;
+    lexeme_type type;
     i32 line;
     std::string_view text;
 };
 
 class lexer {
 public:
-    std::vector<token> run(const std::vector<char>& content);
+    std::vector<lexeme> run(const std::vector<char>& content);
 };

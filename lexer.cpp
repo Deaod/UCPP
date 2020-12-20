@@ -29,29 +29,29 @@ static constexpr char_category TokenDispatchTable[256] = {
     ERR, ERR, ERR, ERR, ERR, ERR, ERR, ERR, ERR, ERR, ERR, ERR, ERR, ERR, ERR, ERR,
 };
 
-std::vector<token> lexer::run(const std::vector<char>& content) {
+std::vector<lexeme> lexer::run(const std::vector<char>& content) {
     i32 line = 1;
     auto c = content.begin();
     auto end = content.end();
-    std::vector<token> tokens;
+    std::vector<lexeme> tokens;
     auto token_start = c;
 
 #define PRODUCE(TOKEN)                                                 \
     do {                                                               \
         tokens.emplace_back(                                           \
-            token_type::TOKEN,                                         \
+            lexeme_type::TOKEN,                                        \
             line,                                                      \
             std::string_view{ &*token_start, size_t(c - token_start) } \
         );                                                             \
     } while(0)                                                         \
 
-#define GOTO(label)      \
+#define GOTO(LABEL)      \
     do {                 \
         token_start = c; \
-        goto label;      \
+        goto LABEL;      \
     } while (0)          \
 
-    dispatch:
+dispatch:
     if (c == end) {
         goto eof;
     }
