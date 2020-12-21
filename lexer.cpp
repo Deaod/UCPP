@@ -4,13 +4,13 @@
 
 constexpr const auto lf = "\n";
 
-enum char_category {
+enum char_category : char {
     ERR, WS, LF, CR, NOT, DQ, HSH, DOL, PCT, AND, SQ, OP, CP, MUL, ADD, COM,
     SUB, DOT, SL, NUL, DIG, COL, SC, LT, EQ, GT, AT, ID, OBK, BSL, CBK, CIR,
     OB, OR, CB, TIL
 };
 
-static constexpr char_category TokenDispatchTable[256] = {
+static constexpr char_category DispatchTable[256] = {
     ERR, ERR, ERR, ERR, ERR, ERR, ERR, ERR, ERR, WS, LF, WS, WS, CR, ERR, ERR,
     ERR, ERR, ERR, ERR, ERR, ERR, ERR, ERR, ERR, ERR, ERR, ERR, ERR, ERR, ERR, ERR,
     WS, NOT, DQ, HSH, DOL, PCT, AND, SQ, OP, CP, MUL, ADD, COM, SUB, DOT, SL,
@@ -29,21 +29,32 @@ static constexpr char_category TokenDispatchTable[256] = {
     ERR, ERR, ERR, ERR, ERR, ERR, ERR, ERR, ERR, ERR, ERR, ERR, ERR, ERR, ERR, ERR,
 };
 
-std::vector<lexeme> lexer::run(const std::vector<char>& content) {
+lexer::result lexer::run(const std::vector<char>& content) {
     i32 line = 1;
+    i32 block_comment_start_line = 1;
     auto c = content.begin();
     auto end = content.end();
-    std::vector<lexeme> tokens;
     auto token_start = c;
+    std::vector<lexeme> lexemes;
+    std::vector<lex_err> errors;
 
 #define PRODUCE(TOKEN)                                                 \
     do {                                                               \
-        tokens.emplace_back(                                           \
+        lexemes.emplace_back(                                          \
             lexeme_type::TOKEN,                                        \
             line,                                                      \
             std::string_view{ &*token_start, size_t(c - token_start) } \
         );                                                             \
     } while(0)                                                         \
+
+#define LEX_ERR(LINE, MSG)                                              \
+    do {                                                                \
+        errors.emplace_back(                                            \
+            std::string_view{ &*token_start, size_t(c - token_start) }, \
+            MSG,                                                        \
+            LINE                                                        \
+        );                                                              \
+    } while(0)                                                          \
 
 #define GOTO(LABEL)      \
     do {                 \
@@ -55,11 +66,12 @@ dispatch:
     if (c == end) {
         goto eof;
     }
-    switch (TokenDispatchTable[*c]) {
+    switch (DispatchTable[*c]) {
         default:
         case ERR:
-            std::cerr << "dropping unexpected symbol: " << *c << lf;
+            token_start = c;
             ++c;
+            LEX_ERR(line, "dropping unexpected symbol");
             goto dispatch;
         case WS:
             GOTO(whitespace);
@@ -222,6 +234,7 @@ slash:
     } else if (*c == '/') {
         goto line_comment;
     } else if (*c == '*') {
+        block_comment_start_line = line;
         goto block_comment;
     } else if (*c == '=') {
         ++c;
@@ -278,14 +291,14 @@ xor_operator:
 
 string:
     if (++c == end) {
-        std::cerr << "unclosed string on line " << line << lf;
+        LEX_ERR(line, "unclosed string");
         goto eof;
     } else if (*c == '"') {
         ++c;
         PRODUCE(STRING);
         goto dispatch;
     } else if (*c == '\n' || *c == '\r') {
-        std::cerr << "unclosed string on line " << line << lf;
+        LEX_ERR(line, "unclosed string");
         goto dispatch;
     } else if (*c == '\\') {
         goto string_escape;
@@ -295,21 +308,21 @@ string:
 
 string_escape:
     if (++c == end) {
-        std::cerr << "unclosed string on line " << line << lf;
+        LEX_ERR(line, "unclosed string");
         goto eof;
     }
     goto string;
 
 name:
     if (++c == end) {
-        std::cerr << "unclosed name on line " << line << lf;
+        LEX_ERR(line, "unclosed name");
         goto eof;
     } else if (*c == '\'') {
         ++c;
         PRODUCE(NAME);
         goto dispatch;
     } else if (*c == '\n' || *c == '\r') {
-        std::cerr << "unclosed name on line " << line << lf;
+        LEX_ERR(line, "unclosed name");
         goto dispatch;
     } else if (*c == '\\') {
         goto name_escape;
@@ -319,7 +332,7 @@ name:
 
 name_escape:
     if (++c == end) {
-        std::cerr << "unclosed name on line " << line << lf;
+        LEX_ERR(line, "unclosed name");
         goto eof;
     }
     goto name;
@@ -333,7 +346,7 @@ octal:
     } else if (*c == '.') {
         goto float_literal;
     } else if (*c == '8' || *c == '9') {
-        std::cerr << "invalid octal literal on line " << line << lf;
+        LEX_ERR(line, "invalid octal literal");
         goto decimal;
     } else if (std::isdigit(*c)) {
         goto octal;
@@ -357,13 +370,13 @@ decimal:
 
 hexadecimal_start:
     if (++c == end) {
-        std::cerr << "invalid hexadecimal literal on line " << line << lf;
+        LEX_ERR(line, "invalid hexadecimal literal");
         PRODUCE(HEXADECIMAL);
         goto eof;
     } else if (std::isxdigit(*c)) {
         goto hexadecimal;
     } else {
-        std::cerr << "invalid hexadecimal literal on line " << line << lf;
+        LEX_ERR(line, "invalid hexadecimal literal");
         PRODUCE(HEXADECIMAL);
         goto eof;
     }
@@ -398,12 +411,12 @@ float_literal:
 
 float_exponent_sign:
     if (++c == end) {
-        std::cerr << "unexpected EOF in float literal on line " << line << lf;
+        LEX_ERR(line, "invalid float literal");
         goto eof;
     } else if (*c == '-' || *c == '+' || std::isdigit(*c)) {
         goto float_exponent;
     } else {
-        std::cerr << "invalid exponent in float literal on line " << line << lf;
+        LEX_ERR(line, "invalid float literal");
         goto eof;
     }
 
@@ -530,7 +543,7 @@ shift_right:
 
 line_continuation:
     if (++c == end) {
-        std::cerr << "unexpected EOF in line continuation on line " << line << lf;
+        LEX_ERR(line, "unexpected EOF");
         goto eof;
     } else if (*c == '\r') {
         goto line_continuation_cr;
@@ -540,7 +553,7 @@ line_continuation:
         ++line;
         goto dispatch;
     } else {
-        std::cerr << "unexpected '\\' on line " << line << lf;
+        LEX_ERR(line, "unexpected '\\'");
         goto dispatch;
     }
 
@@ -620,7 +633,7 @@ block_comment_line_end_cr:
     }
 
 block_comment_error:
-    std::cerr << "unexpected EOF in comment" << lf;
+    LEX_ERR(block_comment_start_line, "unexpected EOF in comment");
     PRODUCE(BLOCK_COMMENT);
     goto eof;
 
@@ -676,7 +689,7 @@ close_bracket:
 
 eof:
 
-    return tokens;
+    return { lexemes, errors };
 
 #undef PRODUCE
 #undef GOTO

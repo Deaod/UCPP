@@ -67,14 +67,29 @@ enum class lexeme_type : char {
 
 struct lexeme {
     explicit lexeme(lexeme_type type, i32 line, std::string_view text) :
-        type(type), line(line), text(text) {}
+        type(type), line(line), text(text)
+    {}
 
     lexeme_type type;
     i32 line;
     std::string_view text;
 };
 
+struct lex_err {
+    explicit lex_err(std::string_view problem, std::string_view explanation, i32 line) :
+        problem(problem), explanation(explanation), line(line)
+    {}
+
+    std::string_view problem;
+    std::string_view explanation;
+    i32 line;
+};
+
 class lexer {
 public:
-    std::vector<lexeme> run(const std::vector<char>& content);
+    struct result {
+        std::vector<lexeme> lexemes;
+        std::vector<lex_err> errors;
+    };
+    result run(const std::vector<char>& content);
 };
