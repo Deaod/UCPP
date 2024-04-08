@@ -1,0 +1,94 @@
+﻿{
+    "configurations": [
+        {
+            "name": "x64-Debug",
+            "generator": "Visual Studio 17 2022 Win64",
+            "configurationType": "Debug",
+            "inheritEnvironments": [ "msvc_x64" ],
+            "buildRoot": "${projectDir}\\out\\build\\${name}",
+            "installRoot": "${projectDir}\\out\\install\\${name}",
+            "cmakeCommandArgs": "",
+            "buildCommandArgs": "",
+            "ctestCommandArgs": "",
+            "variables": [
+                {
+                    "name": "VCPKG_TARGET_TRIPLET",
+                    "value": "x64-windows-static",
+                    "type": "STRING"
+                },
+                {
+                    "name": "CMAKE_CXX_FLAGS_DEBUG",
+                    "value": "/MTd /Zi /Ob0 /Od /RTC1",
+                    "type": "STRING"
+                },
+                {
+                    "name": "CMAKE_EXE_LINKER_FLAGS_DEBUG",
+                    "value": "/debug /INCREMENTAL",
+                    "type": "STRING"
+                }
+            ],
+            "cmakeToolchain": "${projectDir}/vcpkg/scripts/buildsystems/vcpkg.cmake",
+            "intelliSenseMode": "windows-msvc-x64"
+        },
+        {
+            "name": "x64-Release",
+            "generator": "Visual Studio 17 2022 Win64",
+            "configurationType": "Release",
+            "buildRoot": "${projectDir}\\out\\build\\${name}",
+            "installRoot": "${projectDir}\\out\\install\\${name}",
+            "cmakeCommandArgs": "",
+            "buildCommandArgs": "",
+            "ctestCommandArgs": "",
+            "inheritEnvironments": [ "msvc_x64" ],
+            "variables": [
+                {
+                    "name": "VCPKG_TARGET_TRIPLET",
+                    "value": "x64-windows-static",
+                    "type": "STRING"
+                },
+                {
+                    "name": "CMAKE_CXX_FLAGS_RELEASE",
+                    "value": "/MT /O2 /Ob3 /DNDEBUG /GL /Oi",
+                    "type": "STRING"
+                },
+                {
+                    "name": "CMAKE_EXE_LINKER_FLAGS_RELEASE",
+                    "value": "/INCREMENTAL:NO /LTCG",
+                    "type": "STRING"
+                }
+            ],
+            "cmakeToolchain": "${projectDir}/vcpkg/scripts/buildsystems/vcpkg.cmake",
+            "intelliSenseMode": "windows-msvc-x64"
+        },
+        {
+            "name": "x64-Clang-Release",
+            "generator": "Ninja",
+            "configurationType": "Release",
+            "buildRoot": "${projectDir}\\out\\build\\${name}",
+            "installRoot": "${projectDir}\\out\\install\\${name}",
+            "cmakeCommandArgs": "",
+            "buildCommandArgs": "",
+            "ctestCommandArgs": "",
+            "inheritEnvironments": [ "clang_cl_x64" ],
+            "variables": [
+                {
+                    "name": "VCPKG_TARGET_TRIPLET",
+                    "value": "x64-windows-static",
+                    "type": "STRING"
+                },
+                {
+                    "name": "CMAKE_CXX_FLAGS_RELEASE",
+                    "value": "/MT /O2 /Ob2 /DNDEBUG /D_SILENCE_CXX17_OLD_ALLOCATOR_MEMBERS_DEPRECATION_WARNING=1",
+                    "type": "STRING"
+                },
+                {
+                    "name": "CMAKE_EXE_LINKER_FLAGS_RELEASE",
+                    "value": "/INCREMENTAL:NO",
+                    "type": "STRING"
+                }
+            ],
+            "cmakeToolchain": "${projectDir}/vcpkg/scripts/buildsystems/vcpkg.cmake",
+            "intelliSenseMode": "windows-clang-x64"
+        }
+    ]
+}
