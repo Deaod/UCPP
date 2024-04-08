@@ -26,6 +26,7 @@ add_executable(UCPP
     "lexer.h"
     "lexer.cpp")
 set_target_properties(UCPP PROPERTIES CXX_STANDARD 17)
+set_target_properties(UCPP PROPERTIES CXX_STANDARD 23)
 target_include_directories(UCPP PRIVATE Boost_INCLUDE_DIR ${PARALLEL_HASHMAP_INCLUDE_DIRS} xxHash_INCLUDE_DIR)
 target_link_libraries(UCPP PRIVATE Boost::boost Boost::program_options Boost::system)
 
@@ -33,6 +34,6 @@ add_executable(LexerTest
     "lexer.h"
     "lexer.cpp"
     "lexer_test.cpp")
-set_target_properties(LexerTest PROPERTIES CXX_STANDARD 17)
+set_target_properties(LexerTest PROPERTIES CXX_STANDARD 23)
 target_link_libraries(LexerTest PRIVATE GTest::gtest GTest::gtest_main)
 add_test(NAME lexer_test COMMAND LexerTest)
