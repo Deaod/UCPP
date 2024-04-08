@@ -125,7 +125,12 @@ struct token {
 
     token() = default;
     token(lexeme* l) : lexemes{{l}} {}
-    token(lexeme* f, lexeme* l) : lexemes(f, l) {}
+    token(lexeme* f, lexeme* l) : lexemes() {
+        while (f != l) {
+            lexemes.push_back(f);
+            f = reinterpret_cast<lexeme*>(f->next_);
+        }
+    }
 
     virtual bool is(const std::type_info& t) const {
         return t == typeid(token);
