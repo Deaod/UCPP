@@ -56,6 +56,15 @@ int main(int argc, char* argv[]) {
         }
     }();
 
+    auto in_path = [&]() -> fs::path {
+        auto i = vm.find("input");
+        if (i == vm.end()) {
+            return {};
+        } else {
+            return { i->second.as<std::string>() };
+        }
+    }();
+
     std::vector<fs::path> include_dirs;
     auto dirs = vm.find("include-dir");
     if (dirs != vm.end()) {
@@ -85,7 +94,7 @@ int main(int argc, char* argv[]) {
     }
 
     preprocessor pp{ out, include_dirs, defines };
-    if (pp.preprocess_file(in)) {
+    if (pp.preprocess_file(in_path)) {
         return EXIT_FAILURE;
     }
 }

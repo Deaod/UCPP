@@ -15,6 +15,8 @@ namespace fs = std::filesystem;
 #define XXH_INLINE_ALL
 #include <xxhash.h>
 
+#include "lexer.h"
+
 struct string_hash {
     std::size_t operator()(const std::string& s) const {
         if constexpr (sizeof(std::size_t) * CHAR_BIT == 32) {
@@ -25,6 +27,34 @@ struct string_hash {
             throw std::exception("unsupported size of std::size_t");
         }
     }
+    
+    std::size_t operator()(const std::string_view& sv) const {
+        if constexpr (sizeof(std::size_t) * CHAR_BIT == 32) {
+            return std::size_t(XXH3_64bits(sv.data(), sv.size()));
+        } else if constexpr (sizeof(std::size_t) * CHAR_BIT == 64) {
+            return XXH3_64bits(sv.data(), sv.size());
+        } else {
+            throw std::exception("unsupported size of std::size_t");
+        }
+    }
+};
+
+struct define2 {
+    lexeme* name;
+    std::vector<lexeme*> content;
+    bool has_parameters = false;
+    std::vector<lexeme*> parameters;
+
+    define2(lexeme* name, std::vector<lexeme*> content) :
+        name(name), content(std::move(content)), has_parameters(false), parameters()
+    {}
+
+    define2(lexeme* name, std::vector<lexeme*> content, std::vector<lexeme*> parameters) :
+        name(name),
+        content(std::move(content)),
+        has_parameters(true),
+        parameters(std::move(parameters))
+    {}
 };
 
 class preprocessor {
@@ -58,6 +88,9 @@ public:
         _else_seen.push_back(false);
     }
 
+    bool preprocess_file(fs::path in);
+    void replace_identifier(lexeme* ident);
+
     void remove_comments(char* buffer, size_t length);
     bool preprocess_file(std::istream& in);
     bool preprocess_line(std::string_view line);
@@ -79,6 +112,11 @@ public:
 private:
     std::ostream* _out;
     std::vector<fs::path> _include_dirs;
+    
+    boost::intrusive::list<lexeme> _lexemes;
+    phmap::flat_hash_map<std::string_view, define2, string_hash> _defines2;
+    phmap::flat_hash_set<std::string_view, string_hash> _used_defines;
+
     phmap::flat_hash_map<std::string, define, string_hash> _defines;
     enum class comment_state : int {
         START,

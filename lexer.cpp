@@ -1,8 +1,8 @@
 #include "lexer.h"
 #include <iostream>
 #include <cctype>
-
-constexpr const auto lf = "\n";
+#include <array>
+#include <cstddef>
 
 enum char_category : char {
     ERR, WS, LF, CR, NOT, DQ, HSH, DOL, PCT, AND, SQ, OP, CP, MUL, ADD, COM,
@@ -10,15 +10,16 @@ enum char_category : char {
     OB, OR, CB, TIL
 };
 
+// clang-format off
 static constexpr char_category DispatchTable[256] = {
-    ERR, ERR, ERR, ERR, ERR, ERR, ERR, ERR, ERR, WS, LF, WS, WS, CR, ERR, ERR,
+    ERR, ERR, ERR, ERR, ERR, ERR, ERR, ERR, ERR, WS,  LF,  WS,  WS,  CR,  ERR, ERR,
     ERR, ERR, ERR, ERR, ERR, ERR, ERR, ERR, ERR, ERR, ERR, ERR, ERR, ERR, ERR, ERR,
-    WS, NOT, DQ, HSH, DOL, PCT, AND, SQ, OP, CP, MUL, ADD, COM, SUB, DOT, SL,
-    NUL, DIG, DIG, DIG, DIG, DIG, DIG, DIG, DIG, DIG, COL, SC, LT, EQ, GT, ERR,
-    AT, ID, ID, ID, ID, ID, ID, ID, ID, ID, ID, ID, ID, ID, ID, ID,
-    ID, ID, ID, ID, ID, ID, ID, ID, ID, ID, ID, OBK, BSL, CBK, CIR, ID,
-    ERR, ID, ID, ID, ID, ID, ID, ID, ID, ID, ID, ID, ID, ID, ID, ID,
-    ID, ID, ID, ID, ID, ID, ID, ID, ID, ID, ID, OB, OR, CB, TIL, ERR,
+    WS,  NOT, DQ,  HSH, DOL, PCT, AND, SQ,  OP,  CP,  MUL, ADD, COM, SUB, DOT, SL,
+    NUL, DIG, DIG, DIG, DIG, DIG, DIG, DIG, DIG, DIG, COL, SC,  LT,  EQ,  GT,  ERR,
+    AT,  ID,  ID,  ID,  ID,  ID,  ID,  ID,  ID,  ID,  ID,  ID,  ID,  ID,  ID,  ID,
+    ID,  ID,  ID,  ID,  ID,  ID,  ID,  ID,  ID,  ID,  ID,  OBK, BSL, CBK, CIR, ID,
+    ERR, ID,  ID,  ID,  ID,  ID,  ID,  ID,  ID,  ID,  ID,  ID,  ID,  ID,  ID,  ID,
+    ID,  ID,  ID,  ID,  ID,  ID,  ID,  ID,  ID,  ID,  ID,  OB,  OR,  CB,  TIL, ERR,
     ERR, ERR, ERR, ERR, ERR, ERR, ERR, ERR, ERR, ERR, ERR, ERR, ERR, ERR, ERR, ERR,
     ERR, ERR, ERR, ERR, ERR, ERR, ERR, ERR, ERR, ERR, ERR, ERR, ERR, ERR, ERR, ERR,
     ERR, ERR, ERR, ERR, ERR, ERR, ERR, ERR, ERR, ERR, ERR, ERR, ERR, ERR, ERR, ERR,
@@ -28,50 +29,63 @@ static constexpr char_category DispatchTable[256] = {
     ERR, ERR, ERR, ERR, ERR, ERR, ERR, ERR, ERR, ERR, ERR, ERR, ERR, ERR, ERR, ERR,
     ERR, ERR, ERR, ERR, ERR, ERR, ERR, ERR, ERR, ERR, ERR, ERR, ERR, ERR, ERR, ERR,
 };
+// clang-format on
 
 lexer::result lexer::run(const std::vector<char>& content) {
     i32 line = 1;
-    i32 block_comment_start_line = 1;
     auto c = content.begin();
     auto end = content.end();
+    auto line_start = c;
     auto token_start = c;
-    std::vector<lexeme> lexemes;
+    i32 token_line = 1;
+    i32 token_offset = 0;
+    boost::intrusive::list<lexeme> lexemes;
     std::vector<lex_err> errors;
 
 #define PRODUCE(TOKEN)                                                 \
     do {                                                               \
-        lexemes.emplace_back(                                          \
+        lexemes.push_back(*new lexeme{                                 \
             lexeme_type::TOKEN,                                        \
-            line,                                                      \
+            token_line,                                                \
+            token_offset,                                              \
+            i32(c - token_start),                                      \
             std::string_view{ &*token_start, size_t(c - token_start) } \
-        );                                                             \
+        });                                                            \
     } while(0)                                                         \
 
-#define LEX_ERR(LINE, MSG)                                              \
+#define LEX_ERR(MSG)                                                    \
     do {                                                                \
         errors.emplace_back(                                            \
             std::string_view{ &*token_start, size_t(c - token_start) }, \
             MSG,                                                        \
-            LINE                                                        \
+            token_line,                                                 \
+            token_offset                                                \
         );                                                              \
     } while(0)                                                          \
 
-#define GOTO(LABEL)      \
-    do {                 \
-        token_start = c; \
-        goto LABEL;      \
-    } while (0)          \
+#define GOTO(LABEL)                         \
+    do {                                    \
+        token_start = c;                    \
+        token_line = line;                  \
+        token_offset = i32(c - line_start); \
+        goto LABEL;                         \
+    } while (0)                             \
+
+#define NEW_LINE() do { ++line; line_start = c; } while(0)
+
+    if (end - c >= 3 && c[0] == 0xEF && c[1] == 0xBB && c[2] == 0xBF)
+        c += 3;
 
 dispatch:
     if (c == end) {
         goto eof;
     }
-    switch (DispatchTable[*c]) {
+    switch (DispatchTable[std::size_t(*c)]) {
         default:
         case ERR:
             token_start = c;
             ++c;
-            LEX_ERR(line, "dropping unexpected symbol");
+            LEX_ERR("dropping unexpected symbol");
             goto dispatch;
         case WS:
             GOTO(whitespace);
@@ -147,33 +161,31 @@ dispatch:
 
 line_end_cr:
     if (++c == end) {
-        PRODUCE(LINE_END);
-        ++line;
+        PRODUCE(LINE_END); // \r
+        NEW_LINE();
         goto eof;
     } else if (*c == '\n') {
-        goto line_end;
+        goto line_end; // \r\n
     } else {
-        PRODUCE(LINE_END);
-        ++line;
+        PRODUCE(LINE_END); // \r
+        NEW_LINE();
         goto dispatch;
     }
 
 line_end:
     ++c;
-    PRODUCE(LINE_END);
-    ++line;
+    PRODUCE(LINE_END); // \n
+    NEW_LINE();
     goto dispatch;
 
 whitespace:
     if (++c == end) {
+        PRODUCE(WHITESPACE);
         goto eof;
-    } else if (*c == '\r') {
-        GOTO(line_end_cr);
-    } else if (*c == '\n') {
-        GOTO(line_end);
     } else if (std::isspace(*c)) {
         goto whitespace;
     } else {
+        PRODUCE(WHITESPACE);
         goto dispatch;
     }
 
@@ -234,7 +246,6 @@ slash:
     } else if (*c == '/') {
         goto line_comment;
     } else if (*c == '*') {
-        block_comment_start_line = line;
         goto block_comment;
     } else if (*c == '=') {
         ++c;
@@ -291,14 +302,14 @@ xor_operator:
 
 string:
     if (++c == end) {
-        LEX_ERR(line, "unclosed string");
+        LEX_ERR("unclosed string");
         goto eof;
     } else if (*c == '"') {
         ++c;
         PRODUCE(STRING);
         goto dispatch;
     } else if (*c == '\n' || *c == '\r') {
-        LEX_ERR(line, "unclosed string");
+        LEX_ERR("unclosed string");
         goto dispatch;
     } else if (*c == '\\') {
         goto string_escape;
@@ -308,21 +319,21 @@ string:
 
 string_escape:
     if (++c == end) {
-        LEX_ERR(line, "unclosed string");
+        LEX_ERR("unclosed string");
         goto eof;
     }
     goto string;
 
 name:
     if (++c == end) {
-        LEX_ERR(line, "unclosed name");
+        LEX_ERR("unclosed name");
         goto eof;
     } else if (*c == '\'') {
         ++c;
         PRODUCE(NAME);
         goto dispatch;
     } else if (*c == '\n' || *c == '\r') {
-        LEX_ERR(line, "unclosed name");
+        LEX_ERR("unclosed name");
         goto dispatch;
     } else if (*c == '\\') {
         goto name_escape;
@@ -332,7 +343,7 @@ name:
 
 name_escape:
     if (++c == end) {
-        LEX_ERR(line, "unclosed name");
+        LEX_ERR("unclosed name");
         goto eof;
     }
     goto name;
@@ -341,12 +352,12 @@ octal:
     if (++c == end) {
         PRODUCE(OCTAL);
         goto eof;
-    } else if (*c == 'x') {
+    } else if (*c == 'x' || *c == 'X') {
         goto hexadecimal_start;
     } else if (*c == '.') {
         goto float_literal;
     } else if (*c == '8' || *c == '9') {
-        LEX_ERR(line, "invalid octal literal");
+        LEX_ERR("invalid octal literal");
         goto decimal;
     } else if (std::isdigit(*c)) {
         goto octal;
@@ -370,13 +381,13 @@ decimal:
 
 hexadecimal_start:
     if (++c == end) {
-        LEX_ERR(line, "invalid hexadecimal literal");
+        LEX_ERR("invalid hexadecimal literal");
         PRODUCE(HEXADECIMAL);
         goto eof;
     } else if (std::isxdigit(*c)) {
         goto hexadecimal;
     } else {
-        LEX_ERR(line, "invalid hexadecimal literal");
+        LEX_ERR("invalid hexadecimal literal");
         PRODUCE(HEXADECIMAL);
         goto eof;
     }
@@ -396,9 +407,9 @@ float_literal:
     if (++c == end) {
         PRODUCE(FLOAT);
         goto eof;
-    } else if (*c == 'e') {
+    } else if (*c == 'e' || *c == 'E') {
         goto float_exponent_sign;
-    } else if (*c == 'f') {
+    } else if (*c == 'f' || *c == 'F') {
         ++c;
         PRODUCE(FLOAT);
         goto dispatch;
@@ -411,12 +422,25 @@ float_literal:
 
 float_exponent_sign:
     if (++c == end) {
-        LEX_ERR(line, "invalid float literal");
+        LEX_ERR("invalid float literal");
         goto eof;
-    } else if (*c == '-' || *c == '+' || std::isdigit(*c)) {
+    } else if (*c == '-' || *c == '+') {
+        goto float_exponent_sign_after;
+    } else if (std::isdigit(*c)) {
         goto float_exponent;
     } else {
-        LEX_ERR(line, "invalid float literal");
+        LEX_ERR("invalid float literal");
+        goto eof;
+    }
+
+float_exponent_sign_after:
+    if (++c == end) {
+        LEX_ERR("invalid float literal");
+        goto eof;
+    } else if (std::isdigit(*c)) {
+        goto float_exponent;
+    } else {
+        LEX_ERR("invalid float literal");
         goto eof;
     }
 
@@ -426,6 +450,10 @@ float_exponent:
         goto eof;
     } else if (std::isdigit(*c)) {
         goto float_exponent;
+    } else if (*c == 'f' || *c == 'F') {
+        ++c;
+        PRODUCE(FLOAT);
+        goto dispatch;
     } else {
         PRODUCE(FLOAT);
         goto dispatch;
@@ -543,44 +571,40 @@ shift_right:
 
 line_continuation:
     if (++c == end) {
-        LEX_ERR(line, "unexpected EOF");
+        PRODUCE(BACKSLASH);
         goto eof;
     } else if (*c == '\r') {
         goto line_continuation_cr;
     } else if (*c == '\n') {
         ++c;
-        PRODUCE(LINE_CONTINUATION);
-        ++line;
+        NEW_LINE();
         goto dispatch;
     } else {
-        LEX_ERR(line, "unexpected '\\'");
+        PRODUCE(BACKSLASH);
         goto dispatch;
     }
 
 line_continuation_cr:
     if (++c == end) {
-        PRODUCE(LINE_CONTINUATION);
         goto eof;
     } else if (*c == '\n') {
         ++c;
-        PRODUCE(LINE_CONTINUATION);
-        ++line;
+        NEW_LINE();
         goto dispatch;
     } else {
-        PRODUCE(LINE_CONTINUATION);
-        ++line;
+        NEW_LINE();
         goto dispatch;
     }
 
 line_comment:
     if (++c == end) {
-        PRODUCE(LINE_COMMENT);
+        PRODUCE(COMMENT);
         goto eof;
     } else if (*c == '\n') {
-        PRODUCE(LINE_COMMENT);
+        PRODUCE(COMMENT);
         GOTO(line_end);
     } else if (*c == '\r') {
-        PRODUCE(LINE_COMMENT);
+        PRODUCE(COMMENT);
         GOTO(line_end_cr);
     } else {
         goto line_comment;
@@ -604,7 +628,7 @@ block_comment_end:
         goto block_comment_error;
     } else if (*c == '/') {
         ++c;
-        PRODUCE(BLOCK_COMMENT);
+        PRODUCE(COMMENT);
         goto dispatch;
     } else if (*c == '\r') {
         goto block_comment_line_end_cr;
@@ -618,7 +642,7 @@ block_comment_line_end:
     if (++c == end) {
         goto block_comment_error;
     } else {
-        ++line;
+        NEW_LINE();
         goto block_comment;
     }
 
@@ -628,18 +652,31 @@ block_comment_line_end_cr:
     } else if (*c == '\n') {
         goto block_comment_line_end;
     } else {
-        ++line;
+        NEW_LINE();
         goto block_comment;
     }
 
 block_comment_error:
-    LEX_ERR(block_comment_start_line, "unexpected EOF in comment");
-    PRODUCE(BLOCK_COMMENT);
+    LEX_ERR("unexpected EOF in comment");
+    PRODUCE(COMMENT);
     goto eof;
 
 dot:
-    ++c;
-    PRODUCE(DOT);
+    if (++c == end) {
+        PRODUCE(DOT);
+    } else if (*c == '.') {
+        goto dot_dot;
+    } else {
+        PRODUCE(DOT);
+    }
+    goto dispatch;
+
+dot_dot:
+    if (++c == end) {
+        LEX_ERR("unexpected second dot");
+    } else if (*c == '.') {
+        PRODUCE(ELLIPSIS);
+    }
     goto dispatch;
 
 comma:
@@ -688,9 +725,108 @@ close_bracket:
     goto dispatch;
 
 eof:
+    if (lexemes.rbegin()->type != lexeme_type::LINE_END)
+        lexemes.push_back(*new lexeme{lexeme_type::LINE_END, line, i32(c - line_start), 1, "\n"});
 
-    return { lexemes, errors };
+    return { std::move(lexemes), errors };
 
 #undef PRODUCE
+#undef LEX_ERR
 #undef GOTO
+#undef NEW_LINE
+}
+
+struct chunk {
+    std::array<std::byte, sizeof(lexeme) * 4096> data;
+    std::byte* head;
+    chunk* next;
+};
+static chunk* chunks_head;
+
+void lexeme::write_to(std::ostream& os, const lexeme& next) {
+    switch (type) {
+        case lexeme_type::IDENTIFIER:
+        case lexeme_type::OCTAL:
+        case lexeme_type::DECIMAL:
+        case lexeme_type::HEXADECIMAL:
+        case lexeme_type::FLOAT:
+            write_to(os);
+            switch (next.type) {
+                case lexeme_type::IDENTIFIER:
+                case lexeme_type::OCTAL:
+                case lexeme_type::DECIMAL:
+                case lexeme_type::HEXADECIMAL:
+                case lexeme_type::FLOAT:
+                    os.put(' ');
+                    break;
+            }
+            break;
+
+        case lexeme_type::EQ:
+        case lexeme_type::BIT_AND:
+        case lexeme_type::BIT_OR:
+        case lexeme_type::BIT_XOR:
+        case lexeme_type::HASH:
+            write_to(os);
+            if (next.type == type)
+                os.put(' ');
+            break;
+
+        case lexeme_type::LT:
+        case lexeme_type::NOT:
+        case lexeme_type::BIT_NOT:
+        case lexeme_type::PLUS:
+        case lexeme_type::MINUS:
+        case lexeme_type::MUL:
+        case lexeme_type::DIV:
+        case lexeme_type::MOD:
+        case lexeme_type::CONCAT:
+        case lexeme_type::CONCAT_SPACE:
+            write_to(os);
+            if (next.type == type || next.type == lexeme_type::EQ)
+                os.put(' ');
+            break;
+
+        case lexeme_type::GT:
+            write_to(os);
+            if (next.type == type || next.type == lexeme_type::EQ || next.type == lexeme_type::SHR)
+                os.put(' ');
+            break;
+
+        case lexeme_type::SHR:
+            write_to(os);
+            if (next.type == type || next.type == lexeme_type::EQ || next.type == lexeme_type::GT)
+                os.put(' ');
+            break;
+
+        default:
+            write_to(os);
+            break;
+    }
+}
+
+void lexeme::write_to(std::ostream& os) {
+    os.write(text.data(), text.length());
+}
+
+void* lexeme::operator new(size_t s) {
+    if (chunks_head == nullptr || chunks_head->head == (void*) &chunks_head->head) {
+        auto c = new chunk{};
+        c->head = c->data.data();
+        c->next = chunks_head;
+        chunks_head = c;
+    }
+
+    auto that = chunks_head->head;
+    chunks_head->head += s;
+
+    return that;
+}
+
+void lexeme::operator delete(void* p) {
+
+}
+
+tokenizer::result tokenizer::run(const boost::intrusive::list<lexeme>& lexemes) {
+
 }

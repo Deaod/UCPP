@@ -9,12 +9,13 @@ TEST(lexer_tests, no_content_returns_no_tokens) {
     ASSERT_EQ(result.lexemes.size(), 0);
 }
 
-TEST(lexer_tests, whitespace_does_not_produce_tokens) {
+TEST(lexer_tests, whitespace_produces_WHITESPACE_token) {
     std::vector<char> c{ ' ', '\t', '\v', '\f' };
     lexer l;
     auto result = l.run(c);
 
-    ASSERT_EQ(result.lexemes.size(), 0);
+    ASSERT_EQ(result.lexemes.size(), 1);
+    ASSERT_EQ(result.lexemes.begin()->type, lexeme_type::WHITESPACE);
 }
 
 TEST(lexer_tests, line_feed_produces_LINE_END_token) {
@@ -23,7 +24,7 @@ TEST(lexer_tests, line_feed_produces_LINE_END_token) {
     auto result = l.run(c);
 
     ASSERT_EQ(result.lexemes.size(), 1);
-    ASSERT_EQ(result.lexemes[0].type, lexeme_type::LINE_END);
+    ASSERT_EQ(result.lexemes.begin()->type, lexeme_type::LINE_END);
 }
 
 TEST(lexer_tests, carriage_return_produces_LINE_END_token) {
@@ -32,7 +33,7 @@ TEST(lexer_tests, carriage_return_produces_LINE_END_token) {
     auto result = l.run(c);
 
     ASSERT_EQ(result.lexemes.size(), 1);
-    ASSERT_EQ(result.lexemes[0].type, lexeme_type::LINE_END);
+    ASSERT_EQ(result.lexemes.begin()->type, lexeme_type::LINE_END);
 }
 
 TEST(lexer_tests, carriage_return_followed_by_line_feed_produces_LINE_END_token) {
@@ -41,7 +42,7 @@ TEST(lexer_tests, carriage_return_followed_by_line_feed_produces_LINE_END_token)
     auto result = l.run(c);
 
     ASSERT_EQ(result.lexemes.size(), 1);
-    ASSERT_EQ(result.lexemes[0].type, lexeme_type::LINE_END);
+    ASSERT_EQ(result.lexemes.begin()->type, lexeme_type::LINE_END);
 }
 
 TEST(lexer_tests, zero_produces_OCTAL_token) {
@@ -50,7 +51,7 @@ TEST(lexer_tests, zero_produces_OCTAL_token) {
     auto result = l.run(c);
 
     ASSERT_EQ(result.lexemes.size(), 1);
-    ASSERT_EQ(result.lexemes[0].type, lexeme_type::OCTAL);
+    ASSERT_EQ(result.lexemes.begin()->type, lexeme_type::OCTAL);
 }
 
 TEST(lexer_tests, zero_followed_by_dot_produces_FLOAT_token) {
@@ -59,7 +60,7 @@ TEST(lexer_tests, zero_followed_by_dot_produces_FLOAT_token) {
     auto result = l.run(c);
 
     ASSERT_EQ(result.lexemes.size(), 1);
-    ASSERT_EQ(result.lexemes[0].type, lexeme_type::FLOAT);
+    ASSERT_EQ(result.lexemes.begin()->type, lexeme_type::FLOAT);
 }
 
 TEST(lexer_tests, zero_followed_by_dot_f_produces_FLOAT_token) {
@@ -68,5 +69,5 @@ TEST(lexer_tests, zero_followed_by_dot_f_produces_FLOAT_token) {
     auto result = l.run(c);
 
     ASSERT_EQ(result.lexemes.size(), 1);
-    ASSERT_EQ(result.lexemes[0].type, lexeme_type::FLOAT);
+    ASSERT_EQ(result.lexemes.begin()->type, lexeme_type::FLOAT);
 }
