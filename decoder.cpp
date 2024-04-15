@@ -23,5 +23,7 @@ std::vector<char32_t> decoder::decode(std::vector<std::byte> data) {
     //    if (result.errors_were_handled() == false)
     //        return result.output;
     //}
+
+    return {};
 }
 
