@@ -94,7 +94,8 @@ int main(int argc, char* argv[]) {
     }
 
     preprocessor pp{ out, include_dirs, defines };
-    if (pp.preprocess_file(in_path)) {
+    if (pp.preprocess_file(in_path) == false) {
         return EXIT_FAILURE;
     }
+    return EXIT_SUCCESS;
 }
