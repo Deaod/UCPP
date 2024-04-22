@@ -59,55 +59,25 @@ struct define2 {
 
 class preprocessor {
 public:
-    struct define {
-        std::string name;
-        std::string replacement;
-
-        explicit define(std::string name) : name(name), replacement() {}
-        explicit define(std::string name, std::string replacement) :
-            name(name),
-            replacement(replacement) {}
-    };
-
     explicit preprocessor(
         std::ostream& out,
         std::vector<fs::path> include_dirs,
-        std::vector<define> defines
+        std::vector<define2> defines
     ) :
         _out(&out),
         _include_dirs(include_dirs),
-        _defines(),
-        _comment_state(comment_state::START),
         _if_depth(0),
         _erasing_depth(0),
         _else_seen()
     {
         for (auto&& def : defines) {
-            _defines.emplace(def.name, def);
+            _defines2.emplace(def.name, def);
         }
         _else_seen.push_back(false);
     }
 
     bool preprocess_file(fs::path in);
     void replace_identifier(lexeme* ident);
-
-    void remove_comments(char* buffer, size_t length);
-    bool preprocess_file(std::istream& in);
-    bool preprocess_line(std::string_view line);
-    bool preprocess_directive(std::string_view directive, std::string_view args);
-
-    bool preprocess_directive_include(std::string_view args);
-    bool preprocess_directive_define(std::string_view args);
-    bool preprocess_directive_undef(std::string_view args);
-    bool preprocess_directive_ifdef(std::string_view args);
-    bool preprocess_directive_ifndef(std::string_view args);
-    bool preprocess_directive_else(std::string_view args);
-    bool preprocess_directive_endif(std::string_view args);
-
-    bool add_define(std::string_view name, std::string_view replacement);
-
-    bool write_output(std::string_view line);
-    bool replace_identifier(std::string_view ident);
 
 private:
     std::ostream* _out;
@@ -117,15 +87,6 @@ private:
     phmap::flat_hash_map<std::string_view, define2, string_hash> _defines2;
     phmap::flat_hash_set<std::string_view, string_hash> _used_defines;
 
-    phmap::flat_hash_map<std::string, define, string_hash> _defines;
-    enum class comment_state : int {
-        START,
-        STRING, ESCAPE,
-        PRE_COMMENT,
-        LINE_COMMENT,
-        BLOCK_COMMENT,
-        BLOCK_COMMENT_END
-    } _comment_state;
     int _if_depth;
     int _erasing_depth;
     std::vector<bool> _else_seen;
