@@ -80,16 +80,34 @@ int main(int argc, char* argv[]) {
         }
     }
 
-    std::vector<preprocessor::define> defines;
+    std::vector<define2> defines;
     auto defs = vm.find("define");
     if (defs != vm.end()) {
         for (auto&& def : defs->second.as<std::vector<std::string>>()) {
-            auto eq_pos = def.find_first_of('=');
-            if (eq_pos >= 0) {
-                defines.emplace_back(def.substr(0, eq_pos), def.substr(eq_pos + 1));
-            } else {
-                defines.emplace_back(def);
+            auto&& [lex, err] = lexer{"cmdline"}.run(&*def.begin(), &*def.end());
+
+            if (err.size() > 0) {
+                std::cerr << "Could not parse define: " << def << lf;
+                continue;
             }
+
+            if (lex.rbegin()->type == lexeme_type::LINE_END)
+                lex.pop_back_and_dispose(lexeme::disposer{});
+
+            auto eqit = std::find_if(lex.begin(), lex.end(), [](const lexeme& l) {
+                return l.type == lexeme_type::EQ;
+            });
+
+            auto def_name = std::find_if(lex.begin(), eqit, [](const lexeme& l) {
+                return l.type == lexeme_type::IDENTIFIER;
+            });
+
+            std::vector<lexeme> def_cont{};
+            for (auto it = ++eqit; it != lex.end(); ++it)
+                if (it->type != lexeme_type::WHITESPACE && it->type != lexeme_type::COMMENT)
+                    def_cont.push_back(*it);
+
+            defines.emplace_back(*def_name, std::move(def_cont));
         }
     }
 

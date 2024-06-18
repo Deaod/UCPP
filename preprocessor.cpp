@@ -3,6 +3,7 @@
 #include "scope_guard.h"
 
 #include <cctype>
+#include <format>
 
 constexpr const auto lf = "\n";
 
@@ -36,6 +37,9 @@ static std::string_view trim(std::string_view sv) {
     return trim_right(trim_left(sv));
 }
 
+// returns the next useful lexeme
+// skips over whitespace and comment lexemes
+// line endings are not counted as whitespace
 template<typename iterator>
 iterator next_lexeme(iterator l, iterator end) {
     while (++l != end && (l->type == lexeme_type::WHITESPACE || l->type == lexeme_type::COMMENT));
@@ -46,7 +50,9 @@ bool preprocessor::preprocess_file(fs::path in) {
     if (fs::exists(in) == false || fs::is_directory(in))
         return false;
 
+    std::vector<std::string> files;
     std::vector<std::vector<char>> content;
+    std::vector<std::string> errors;
     
     fs::path path = in;
     auto l = _lexemes.begin();
@@ -55,6 +61,12 @@ bool preprocessor::preprocess_file(fs::path in) {
     auto dir_id = l;
     auto include_content = l;
     auto define_name = l;
+    bool first_file = true;
+
+#define PP_ERR(MSG) \
+    do { \
+        errors.push_back(std::format("{}:{} {}\n", l->file_path, l->line, MSG));\
+    } while(0)
 
 file:
     {
@@ -62,15 +74,23 @@ file:
         std::fstream f{path.c_str(), std::ios::in | std::ios::binary};
         f.read(c.data(), c.size());
 
-        auto lex_result = lexer{}.run(c);
+        files.push_back(fs::absolute(path).string());
+        auto lex_result = lexer{*(files.rbegin())}.run(&*c.begin(), (&*c.begin()) + c.size());
         if (lex_result.errors.size() > 0) {
-            // print errors
+            for (auto&& e : lex_result.errors) {
+                errors.push_back(std::format("{}:{} {}\n", *(files.rbegin()), e.line, e.explanation));
+            }
             return false;
         }
 
         auto l2 = l++;
         _lexemes.splice(l, lex_result.lexemes);
-        l = l2;
+        if (first_file) {
+            first_file = false;
+            l = _lexemes.begin();
+        } else {
+            l = l2;
+        }
     }
 
 dispatch:
@@ -148,8 +168,7 @@ other:
 
 else_directive:
     if (_else_seen[_if_depth]) {
-        // TODO error
-        // second else
+        PP_ERR("second else");
     } else {
         _else_seen[_if_depth] = true;
         if (_erasing_depth > 0) {
@@ -159,8 +178,7 @@ else_directive:
         }
         while (l != end && l->type == lexeme_type::LINE_END) {
             if (l->type != lexeme_type::WHITESPACE && l->type != lexeme_type::COMMENT) {
-                // TODO error
-                // unexpected token
+                PP_ERR("unexpected token");
             }
             ++l;
         }
@@ -177,28 +195,26 @@ endif_directive:
         _if_depth -= 1;
         while (l != end && l->type == lexeme_type::LINE_END) {
             if (l->type != lexeme_type::WHITESPACE && l->type != lexeme_type::COMMENT) {
-                // TODO error
-                // unexpected token
+                PP_ERR("unexpected token");
             }
             ++l;
         }
         _lexemes.erase_and_dispose(dir_start, l, lexeme::disposer{});
     } else {
-        // TODO error
-        // spurious endif
+        PP_ERR("spurious endif");
     }
     goto dispatch;
 
 ifdef_directive:
     l = next_lexeme(l, end);
     if (l == end) {
-        // TODO error
+        PP_ERR("missing define");
         goto eof;
     } else if (l->type == lexeme_type::IDENTIFIER) {
         define_name = l;
         goto ifdef_define;
     } else {
-        // TODO error
+        PP_ERR("unexpected token");
         goto other;
     }
 
@@ -206,7 +222,7 @@ ifdef_define:
     {
         while (l != end && l->type == lexeme_type::LINE_END) {
             if (l->type != lexeme_type::WHITESPACE && l->type != lexeme_type::COMMENT) {
-                // TODO error
+                PP_ERR("unexpected token");
             }
             ++l;
         }
@@ -225,15 +241,13 @@ ifdef_define:
 undef_directive:
     l = next_lexeme(l, end);
     if (l == end) {
-        // TODO error
-        // unexpected EOF
+        PP_ERR("unexpected EOF");
         goto eof;
     } else if (l->type == lexeme_type::IDENTIFIER) {
         define_name = l;
         goto undef_define;
     } else {
-        // TODO error
-        // unexpected token
+        PP_ERR("unexpected token");
         goto other;
     }
 
@@ -241,15 +255,13 @@ undef_define:
     {
         auto def = _defines2.find(define_name->text);
         if (def == _defines2.end()) {
-            // TODO error
-            // macro not defined
+            PP_ERR("macro not defined");
         }
         _defines2.erase(def);
     }
     while (l != end && l->type == lexeme_type::LINE_END) {
         if (l->type != lexeme_type::WHITESPACE && l->type != lexeme_type::COMMENT) {
-            // TODO error
-            // unexpected token
+            PP_ERR("unexpected token");
         }
         ++l;
     }
@@ -260,43 +272,39 @@ undef_define:
 define_directive:
     l = next_lexeme(l, end);
     if (l == end) {
-        // TODO error
-        // unexpected EOF
+        PP_ERR("unexpected EOF");
         goto eof;
     } else if (l->type == lexeme_type::IDENTIFIER) {
         define_name = l;
         goto define_parameters;
     } else {
-        // TODO error
-        // expected name for define
+        PP_ERR("expected name for define");
         goto other;
     }
 
 define_parameters:
     if (++l != end && l->type == lexeme_type::OPEN_PAREN) {
-        // parameterized not yet supported
-
+        PP_ERR("parameterized not yet supported");
     } else {
-        std::vector<lexeme*> c;
+        std::vector<lexeme> c;
         for (l = next_lexeme(define_name, end); l != end && l->type != lexeme_type::LINE_END; l = next_lexeme(l, end)) {
-            c.push_back(&*l);
+            c.push_back(*l);
         }
+        _defines2.emplace(define_name->text, define2{*define_name, std::move(c)});
         _lexemes.erase_and_dispose(dir_start, l, lexeme::disposer{});
-        _defines2.emplace(define_name->text, define2{&*define_name, std::move(c)});
     }
     goto dispatch;
 
 ifndef_directive:
     l = next_lexeme(l, end);
     if (l == end) {
-        // TODO error
-        // unexpected EOF
+        PP_ERR("expected define");
         goto eof;
     } else if (l->type == lexeme_type::IDENTIFIER) {
         define_name = l;
         goto ifndef_define;
     } else {
-        // TODO error
+        PP_ERR("unexpected token");
         goto other;
     }
 
@@ -304,7 +312,7 @@ ifndef_define:
     {
         while (l != end && l->type == lexeme_type::LINE_END) {
             if (l->type != lexeme_type::WHITESPACE && l->type != lexeme_type::COMMENT) {
-                // TODO error
+                PP_ERR("unexpected token");
             }
             ++l;
         }
@@ -323,23 +331,16 @@ ifndef_define:
 include_directive:
     l = next_lexeme(l, end);
     if (l == end) {
-        // TODO error
-        // unexpected EOF
+        PP_ERR("unexpected EOF");
         goto eof;
     } else if (l->type == lexeme_type::STRING) {
         include_content = l;
         goto include_rel;
     } else if (l->type == lexeme_type::LT) {
-        include_content = _lexemes.insert(l, *new lexeme{
-            lexeme_type::INCLUDE_STRING,
-            l->line,
-            l->line_offset,
-            l->src_length,
-            l->text
-            });
+        include_content = l;
         goto include_dir;
     } else {
-        // TODO error
+        PP_ERR("unexpected token");
         goto other;
     }
 
@@ -347,7 +348,7 @@ include_rel:
     include_content->type = lexeme_type::INCLUDE_STRING;
     while (++l != end && l->type != lexeme_type::LINE_END) {
         if (l->type != lexeme_type::WHITESPACE && l->type != lexeme_type::COMMENT) {
-            // TODO error
+            PP_ERR("unexpected token");
         }
     }
     path = in.remove_filename() / include_content->text.substr(1, include_content->text.size() - 2);
@@ -359,41 +360,37 @@ include_rel:
 
 include_dir:
     if (++l == end) {
-        // TODO error
-        // unexpected EOF
+        PP_ERR("unexpected EOF");
         goto eof;
     } else {
         switch (l->type) {
             case lexeme_type::LINE_END:
-                // TODO error
-                // unclosed include path
+                PP_ERR("unclosed include path");
                 goto other;
 
-            case lexeme_type::COMMENT:
-                include_content->src_length += l->src_length;
-                include_content->text += " ";
-                goto include_dir;
-
             case lexeme_type::GT:
-                include_content->src_length += l->src_length;
-                include_content->text += l->text;
                 {
-                    auto l2 = include_content;
-                    _lexemes.erase_and_dispose(++l2, ++l, lexeme::disposer{});
+                    auto l2 = _lexemes.insert(include_content, *new lexeme{
+                        include_content->file_path,
+                        lexeme_type::INCLUDE_STRING,
+                        include_content->line,
+                        include_content->line_offset,
+                        i32(l->text.end() - include_content->text.begin()),
+                        std::string_view{include_content->text.begin(), l->text.end()}
+                    });
+                    _lexemes.erase_and_dispose(include_content, ++l, lexeme::disposer{});
+                    include_content = l2;
                 }
 
                 while (l != end && l->type != lexeme_type::LINE_END) {
                     if (l->type != lexeme_type::WHITESPACE && l->type != lexeme_type::COMMENT) {
-                        // TODO error
-                        // unexpected tokens
+                        PP_ERR("unexpected tokens");
                     }
                     ++l;
                 }
                 goto include_file;
 
             default:
-                include_content->src_length += l->src_length;
-                include_content->text += l->text;
                 goto include_dir;
         }
     }
@@ -409,34 +406,41 @@ include_file:
     if (fs::exists(path) && fs::is_directory(path) == false) {
         goto file;
     }
-    // TODO error
-    // could not find included file
+    PP_ERR("could not find included file");
     goto dispatch;
 
 eof:
 
-    auto cur = _lexemes.begin();
-    auto next = cur;
-    next++;
+    if (errors.size() > 0) {
+        for (auto&& s : errors) {
+            std::cout << s;
+        }
 
-    while (next != _lexemes.end()) {
-        cur->write_to(*_out, *next);
-        cur = next++;
+        return false;
+    } else {
+        auto cur = _lexemes.begin();
+        auto next = cur;
+        next++;
+
+        while (next != _lexemes.end()) {
+            cur->write_to(*_out, *next);
+            cur = next++;
+        }
+        cur->write_to(*_out);
+        return true;
     }
-    cur->write_to(*_out);
-    return true;
 }
 
 void preprocessor::replace_identifier(lexeme* ident) {
     if (ident->type != lexeme_type::IDENTIFIER)
         return;
 
-    auto r = _defines2.find(ident->text);
-    if (r != _defines2.end() && r->second.has_parameters == false && _used_defines.contains(r->second.name->text) == false) {
-        auto&& [uit, success] = _used_defines.emplace(r->second.name->text);
+    auto r = _defines2.find(std::string{ident->text});
+    if (r != _defines2.end() && r->second.has_parameters == false && _used_defines.contains(r->second.name.text) == false) {
+        auto&& [uit, success] = _used_defines.emplace(r->second.name.text);
         auto iter = _lexemes.iterator_to(*ident);
         for (auto&& c : r->second.content) {
-            auto l = new lexeme{*c};
+            auto l = new lexeme{c};
             replace_identifier(&*_lexemes.insert(iter, *l)); // recurse
         }
         _lexemes.erase_and_dispose(iter, lexeme::disposer{});

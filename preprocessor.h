@@ -18,6 +18,8 @@ namespace fs = std::filesystem;
 #include "lexer.h"
 
 struct string_hash {
+    using is_transparent = std::true_type;
+
     std::size_t operator()(const std::string& s) const {
         if constexpr (sizeof(std::size_t) * CHAR_BIT == 32) {
             return std::size_t(XXH3_64bits(s.data(), s.size()));
@@ -37,23 +39,27 @@ struct string_hash {
             throw std::exception("unsupported size of std::size_t");
         }
     }
+
+    std::size_t operator()(const lexeme& l) const {
+        return operator()(l.text);
+    }
 };
 
 struct define2 {
-    lexeme* name;
-    std::vector<lexeme*> content;
+    lexeme name;
+    std::vector<lexeme> content;
     bool has_parameters = false;
-    std::vector<lexeme*> parameters;
+    std::vector<lexeme> parameters;
 
-    define2(lexeme* name, std::vector<lexeme*> content) :
-        name(name), content(std::move(content)), has_parameters(false), parameters()
+    define2(lexeme name, std::vector<lexeme> content) :
+        name(name), content(content), has_parameters(false), parameters()
     {}
 
-    define2(lexeme* name, std::vector<lexeme*> content, std::vector<lexeme*> parameters) :
+    define2(lexeme name, std::vector<lexeme> content, std::vector<lexeme> parameters) :
         name(name),
-        content(std::move(content)),
+        content(content),
         has_parameters(true),
-        parameters(std::move(parameters))
+        parameters(parameters)
     {}
 };
 
@@ -71,7 +77,7 @@ public:
         _else_seen()
     {
         for (auto&& def : defines) {
-            _defines2.emplace(def.name, def);
+            _defines2.emplace(def.name.text, def);
         }
         _else_seen.push_back(false);
     }
@@ -84,8 +90,8 @@ private:
     std::vector<fs::path> _include_dirs;
     
     boost::intrusive::list<lexeme> _lexemes;
-    phmap::flat_hash_map<std::string_view, define2, string_hash> _defines2;
-    phmap::flat_hash_set<std::string_view, string_hash> _used_defines;
+    phmap::flat_hash_map<std::string, define2, string_hash> _defines2;
+    phmap::flat_hash_set<std::string, string_hash> _used_defines;
 
     int _if_depth;
     int _erasing_depth;

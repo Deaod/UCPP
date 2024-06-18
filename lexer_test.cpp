@@ -3,7 +3,7 @@
 
 TEST(lexer_tests, no_content_returns_no_tokens) {
     std::vector<char> c(std::size_t(0));
-    lexer l;
+    lexer l{"test"};
     auto result = l.run(c);
 
     ASSERT_EQ(result.lexemes.size(), 0);
@@ -11,7 +11,7 @@ TEST(lexer_tests, no_content_returns_no_tokens) {
 
 TEST(lexer_tests, whitespace_produces_WHITESPACE_token) {
     std::vector<char> c{ ' ', '\t', '\v', '\f' };
-    lexer l;
+    lexer l{"test"};
     auto result = l.run(c);
 
     ASSERT_EQ(result.lexemes.size(), 1);
@@ -20,7 +20,7 @@ TEST(lexer_tests, whitespace_produces_WHITESPACE_token) {
 
 TEST(lexer_tests, line_feed_produces_LINE_END_token) {
     std::vector<char> c{ '\n' };
-    lexer l;
+    lexer l{"test"};
     auto result = l.run(c);
 
     ASSERT_EQ(result.lexemes.size(), 1);
@@ -29,7 +29,7 @@ TEST(lexer_tests, line_feed_produces_LINE_END_token) {
 
 TEST(lexer_tests, carriage_return_produces_LINE_END_token) {
     std::vector<char> c{ '\r' };
-    lexer l;
+    lexer l{"test"};
     auto result = l.run(c);
 
     ASSERT_EQ(result.lexemes.size(), 1);
@@ -38,7 +38,7 @@ TEST(lexer_tests, carriage_return_produces_LINE_END_token) {
 
 TEST(lexer_tests, carriage_return_followed_by_line_feed_produces_LINE_END_token) {
     std::vector<char> c{ '\r', '\n' };
-    lexer l;
+    lexer l{"test"};
     auto result = l.run(c);
 
     ASSERT_EQ(result.lexemes.size(), 1);
@@ -47,7 +47,7 @@ TEST(lexer_tests, carriage_return_followed_by_line_feed_produces_LINE_END_token)
 
 TEST(lexer_tests, zero_produces_OCTAL_token) {
     std::vector<char> c{ '0' };
-    lexer l;
+    lexer l{"test"};
     auto result = l.run(c);
 
     ASSERT_EQ(result.lexemes.size(), 1);
@@ -56,7 +56,7 @@ TEST(lexer_tests, zero_produces_OCTAL_token) {
 
 TEST(lexer_tests, zero_followed_by_dot_produces_FLOAT_token) {
     std::vector<char> c{ '0', '.' };
-    lexer l;
+    lexer l{"test"};
     auto result = l.run(c);
 
     ASSERT_EQ(result.lexemes.size(), 1);
@@ -65,7 +65,7 @@ TEST(lexer_tests, zero_followed_by_dot_produces_FLOAT_token) {
 
 TEST(lexer_tests, zero_followed_by_dot_f_produces_FLOAT_token) {
     std::vector<char> c{ '0', '.', 'f' };
-    lexer l;
+    lexer l{"test"};
     auto result = l.run(c);
 
     ASSERT_EQ(result.lexemes.size(), 1);

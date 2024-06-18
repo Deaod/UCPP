@@ -71,15 +71,16 @@ enum class lexeme_type : char {
 };
 
 struct lexeme : boost::intrusive::list_base_hook<> {
-    explicit lexeme(lexeme_type type, i32 line, i32 line_offset, i32 src_length, std::string_view text) :
-        type(type), line(line), line_offset(line_offset), src_length(src_length), text(text)
+    explicit lexeme(std::string_view fp, lexeme_type type, i32 line, i32 line_offset, i32 src_length, std::string_view text) :
+        file_path(fp), type(type), line(line), line_offset(line_offset), src_length(src_length), text(text)
     {}
 
+    std::string_view file_path;
     lexeme_type type;
     i32 line;
     i32 line_offset;
     i32 src_length;
-    std::string text;
+    std::string_view text;
 
     lexeme(lexeme&&) = default;
     lexeme(const lexeme&) = default;
@@ -113,11 +114,17 @@ struct lex_err {
 
 class lexer {
 public:
+    lexer(std::string_view fp) : file_path(fp) {}
+
     struct result {
         boost::intrusive::list<lexeme> lexemes;
         std::vector<lex_err> errors;
     };
-    result run(const std::vector<char>& content);
+    result run(std::vector<char>& v) { return run(&*v.begin(), &*v.end()); }
+    result run(char* begin, char* end);
+
+private:
+    std::string_view file_path;
 };
 
 struct token {

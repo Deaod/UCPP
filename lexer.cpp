@@ -31,10 +31,9 @@ static constexpr char_category DispatchTable[256] = {
 };
 // clang-format on
 
-lexer::result lexer::run(const std::vector<char>& content) {
+lexer::result lexer::run(char* begin, char* end) {
     i32 line = 1;
-    auto c = content.begin();
-    auto end = content.end();
+    auto c = begin;
     auto line_start = c;
     auto token_start = c;
     i32 token_line = 1;
@@ -45,6 +44,7 @@ lexer::result lexer::run(const std::vector<char>& content) {
 #define PRODUCE(TOKEN)                                                 \
     do {                                                               \
         lexemes.push_back(*new lexeme{                                 \
+            file_path,                                                 \
             lexeme_type::TOKEN,                                        \
             token_line,                                                \
             token_offset,                                              \
@@ -726,7 +726,7 @@ close_bracket:
 
 eof:
     if (lexemes.rbegin()->type != lexeme_type::LINE_END)
-        lexemes.push_back(*new lexeme{lexeme_type::LINE_END, line, i32(c - line_start), 1, "\n"});
+        lexemes.push_back(*new lexeme{file_path, lexeme_type::LINE_END, line, i32(c - line_start), 1, "\n"});
 
     return { std::move(lexemes), errors };
 
