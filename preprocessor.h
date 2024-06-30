@@ -79,7 +79,7 @@ public:
         for (auto&& def : defines) {
             _defines2.emplace(def.name.text, def);
         }
-        _else_seen.push_back(false);
+        _else_seen.push_back(true);
     }
 
     bool preprocess_file(fs::path in);

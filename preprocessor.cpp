@@ -147,7 +147,9 @@ other:
     }
 
 else_directive:
-    if (_else_seen[_if_depth]) {
+    if (_if_depth == 0) {
+        PP_ERR("spurious else");
+    } else if (_else_seen[_if_depth]) {
         PP_ERR("second else");
     } else {
         _else_seen[_if_depth] = true;
