@@ -17,26 +17,6 @@ constexpr std::string_view dir_endif{ "endif" };
 constexpr std::string_view dir_ifdef{ "ifdef" };
 constexpr std::string_view dir_ifndef{ "ifndef" };
 
-static std::string_view trim_left(std::string_view sv) {
-    size_t index = 0;
-    while (index < sv.size() && std::isspace(sv[index]))
-        index += 1;
-
-    return sv.substr(index);
-}
-
-static std::string_view trim_right(std::string_view sv) {
-    size_t index = sv.size();
-    while (index > 0 && std::isspace(sv[index - 1]))
-        index -= 1;
-
-    return sv.substr(0, index);
-}
-
-static std::string_view trim(std::string_view sv) {
-    return trim_right(trim_left(sv));
-}
-
 // returns the next useful lexeme
 // skips over whitespace and comment lexemes
 // line endings are not counted as whitespace
