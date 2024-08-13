@@ -80,7 +80,7 @@ int main(int argc, char* argv[]) {
         }
     }
 
-    std::vector<define2> defines;
+    std::vector<define> defines;
     auto defs = vm.find("define");
     if (defs != vm.end()) {
         for (auto&& def : defs->second.as<std::vector<std::string>>()) {

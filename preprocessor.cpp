@@ -4,27 +4,688 @@
 
 #include <cctype>
 #include <format>
+#include <charconv>
 
 constexpr const auto lf = "\n";
 
-constexpr std::string_view dir_include{ "include" };
-constexpr std::string_view dir_define{ "define" };
-constexpr std::string_view dir_undef{ "undef" };
-constexpr std::string_view dir_if{ "if" };
-constexpr std::string_view dir_elif{ "elif" };
-constexpr std::string_view dir_else{ "else" };
-constexpr std::string_view dir_endif{ "endif" };
-constexpr std::string_view dir_ifdef{ "ifdef" };
-constexpr std::string_view dir_ifndef{ "ifndef" };
+constexpr std::string_view dir_include{"include"};
+constexpr std::string_view dir_define{"define"};
+constexpr std::string_view dir_undef{"undef"};
+constexpr std::string_view dir_if{"if"};
+constexpr std::string_view dir_elif{"elif"};
+constexpr std::string_view dir_else{"else"};
+constexpr std::string_view dir_endif{"endif"};
+constexpr std::string_view dir_ifdef{"ifdef"};
+constexpr std::string_view dir_ifndef{"ifndef"};
+constexpr std::string_view sym_defined{"defined"};
+
+constexpr std::string_view sym_zero{"0"};
+constexpr std::string_view sym_one{"1"};
 
 // returns the next useful lexeme
 // skips over whitespace and comment lexemes
 // line endings are not counted as whitespace
-template<typename iterator>
-iterator next_lexeme(iterator l, iterator end) {
+lex_iter next_lexeme(lex_iter l, lex_iter end) {
     while (++l != end && (l->type == lexeme_type::WHITESPACE || l->type == lexeme_type::COMMENT));
     return l;
 }
+
+lex_iter seek_line_end(lex_iter l, lex_iter end) {
+    while (++l != end && l->type != lexeme_type::LINE_END);
+    return l;
+}
+
+/*
+Grammar
+
+or_expr      = and_expr {"||" and_expr}
+and_expr     = cmp_expr {"&&" cmp_expr}
+cmp_expr     = bit_or_expr {("=="|"!="|">"|">="|"<"|"<=) bit_or_expr}
+bit_or_expr  = bit_and_expr {("|"|"^") bit_and_expr}
+bit_and_expr = shift_expr {"&" shift_expr}
+shift_expr   = add_expr {("<<"|">>"|">>>") add_expr}
+add_expr     = mul_expr {("+"|"-") mul_expr}
+mul_expr     = pow_expr {("*"|"/"|"%") pow_expr}
+pow_expr     = unary_expr {"**" unary_expr}
+unary_expr   = [("+"|"-"|"~"|"!")] unary_expr
+             | "defined" paren_expr
+paren_expr   = Ident ["(" [or_expr {, or_expr}] ")"] -- not implemented currently
+             | Number
+             | "(" or_expr ")"
+ */
+
+struct value {
+    explicit value(u32 val) : _value(val) {}
+    u32 int_value() const {
+        return _value;
+    }
+private:
+    u32 _value;
+};
+
+enum class expression_type {
+    NONE,
+    OR,
+    AND,
+    EQ,
+    NEQ,
+    GT,
+    GEQ,
+    LT,
+    LEQ,
+    BIT_OR,
+    BIT_XOR,
+    BIT_AND,
+    SHL,
+    SHR,
+    SHRU,
+    ADD,
+    SUB,
+    MUL,
+    DIV,
+    MOD,
+    POW,
+    POS,
+    NEG,
+    NOT,
+    BIT_NOT,
+    DEF,
+    LITERAL,
+    NAME
+};
+
+struct expression {
+    expression(expression_parser* parser) : _parser(parser) {}
+    virtual ~expression() = default;
+    virtual value evaluate() const = 0;
+    virtual expression_type type() const = 0;
+
+protected:
+    expression_parser* _parser;
+};
+
+struct binary_expression : expression {
+    explicit binary_expression(expression_parser* parser, expression* lhs, expression* rhs) noexcept :
+        expression(parser), _lhs(lhs), _rhs(rhs) {}
+
+protected:
+    expression* _lhs;
+    expression* _rhs;
+};
+
+struct or_expression : binary_expression {
+    explicit or_expression(expression_parser* parser, expression* lhs, expression* rhs) noexcept : binary_expression(parser, lhs, rhs) {}
+    value evaluate() const override { return value{_lhs->evaluate().int_value() || _rhs->evaluate().int_value()}; }
+    expression_type type() const override { return expression_type::OR; }
+};
+
+struct and_expression : binary_expression {
+    explicit and_expression(expression_parser* parser, expression* lhs, expression* rhs) noexcept : binary_expression(parser, lhs, rhs) {}
+    value evaluate() const override { return value{_lhs->evaluate().int_value() && _rhs->evaluate().int_value()}; }
+    expression_type type() const override { return expression_type::AND; }
+};
+
+struct eq_expression : binary_expression {
+    explicit eq_expression(expression_parser* parser, expression* lhs, expression* rhs) noexcept : binary_expression(parser, lhs, rhs) {}
+    value evaluate() const override { return value{_lhs->evaluate().int_value() == _rhs->evaluate().int_value()}; }
+    expression_type type() const override { return expression_type::EQ; }
+};
+
+struct neq_expression : binary_expression {
+    explicit neq_expression(expression_parser* parser, expression* lhs, expression* rhs) noexcept : binary_expression(parser, lhs, rhs) {}
+    value evaluate() const override { return value{_lhs->evaluate().int_value() != _rhs->evaluate().int_value()}; }
+    expression_type type() const override { return expression_type::NEQ; }
+};
+
+struct gt_expression : binary_expression {
+    explicit gt_expression(expression_parser* parser, expression* lhs, expression* rhs) noexcept : binary_expression(parser, lhs, rhs) {}
+    value evaluate() const override { return value{_lhs->evaluate().int_value() > _rhs->evaluate().int_value()}; }
+    expression_type type() const override { return expression_type::GT; }
+};
+
+struct geq_expression : binary_expression {
+    explicit geq_expression(expression_parser* parser, expression* lhs, expression* rhs) noexcept : binary_expression(parser, lhs, rhs) {}
+    value evaluate() const override { return value{_lhs->evaluate().int_value() >= _rhs->evaluate().int_value()}; }
+    expression_type type() const override { return expression_type::GEQ; }
+};
+
+struct lt_expression : binary_expression {
+    explicit lt_expression(expression_parser* parser, expression* lhs, expression* rhs) noexcept : binary_expression(parser, lhs, rhs) {}
+    value evaluate() const override { return value{_lhs->evaluate().int_value() < _rhs->evaluate().int_value()}; }
+    expression_type type() const override { return expression_type::LT; }
+};
+
+struct leq_expression : binary_expression {
+    explicit leq_expression(expression_parser* parser, expression* lhs, expression* rhs) noexcept : binary_expression(parser, lhs, rhs) {}
+    value evaluate() const override { return value{_lhs->evaluate().int_value() <= _rhs->evaluate().int_value()}; }
+    expression_type type() const override { return expression_type::LEQ; }
+};
+
+struct bit_or_expression : binary_expression {
+    explicit bit_or_expression(expression_parser* parser, expression* lhs, expression* rhs) noexcept : binary_expression(parser, lhs, rhs) {}
+    value evaluate() const override { return value{_lhs->evaluate().int_value() | _rhs->evaluate().int_value()}; }
+    expression_type type() const override { return expression_type::BIT_OR; }
+};
+
+struct bit_xor_expression : binary_expression {
+    explicit bit_xor_expression(expression_parser* parser, expression* lhs, expression* rhs) noexcept : binary_expression(parser, lhs, rhs) {}
+    value evaluate() const override { return value{_lhs->evaluate().int_value() ^ _rhs->evaluate().int_value()}; }
+    expression_type type() const override { return expression_type::BIT_XOR; }
+};
+
+struct bit_and_expression : binary_expression {
+    explicit bit_and_expression(expression_parser* parser, expression* lhs, expression* rhs) noexcept : binary_expression(parser, lhs, rhs) {}
+    value evaluate() const override { return value{_lhs->evaluate().int_value() & _rhs->evaluate().int_value()}; }
+    expression_type type() const override { return expression_type::BIT_AND; }
+};
+
+struct shl_expression : binary_expression {
+    explicit shl_expression(expression_parser* parser, expression* lhs, expression* rhs) noexcept : binary_expression(parser, lhs, rhs) {}
+    value evaluate() const override { return value{_lhs->evaluate().int_value() << _rhs->evaluate().int_value()}; }
+    expression_type type() const override { return expression_type::SHL; }
+};
+
+struct shr_expression : binary_expression {
+    explicit shr_expression(expression_parser* parser, expression* lhs, expression* rhs) noexcept : binary_expression(parser, lhs, rhs) {}
+    value evaluate() const override { return value{u32(i32(_lhs->evaluate().int_value()) >> _rhs->evaluate().int_value())}; }
+    expression_type type() const override { return expression_type::SHR; }
+};
+
+struct shru_expression : binary_expression {
+    explicit shru_expression(expression_parser* parser, expression* lhs, expression* rhs) noexcept : binary_expression(parser, lhs, rhs) {}
+    value evaluate() const override { return value{_lhs->evaluate().int_value() >> _rhs->evaluate().int_value()}; }
+    expression_type type() const override { return expression_type::SHRU; }
+};
+
+struct add_expression : binary_expression {
+    explicit add_expression(expression_parser* parser, expression* lhs, expression* rhs) noexcept : binary_expression(parser, lhs, rhs) {}
+    value evaluate() const override { return value{_lhs->evaluate().int_value() + _rhs->evaluate().int_value()}; }
+    expression_type type() const override { return expression_type::ADD; }
+};
+
+struct sub_expression : binary_expression {
+    explicit sub_expression(expression_parser* parser, expression* lhs, expression* rhs) noexcept : binary_expression(parser, lhs, rhs) {}
+    value evaluate() const override { return value{_lhs->evaluate().int_value() - _rhs->evaluate().int_value()}; }
+    expression_type type() const override { return expression_type::SUB; }
+};
+
+struct mul_expression : binary_expression {
+    explicit mul_expression(expression_parser* parser, expression* lhs, expression* rhs) noexcept : binary_expression(parser, lhs, rhs) {}
+    value evaluate() const override { return value{_lhs->evaluate().int_value() * _rhs->evaluate().int_value()}; }
+    expression_type type() const override { return expression_type::MUL; }
+};
+
+struct div_expression : binary_expression {
+    explicit div_expression(expression_parser* parser, expression* lhs, expression* rhs) noexcept : binary_expression(parser, lhs, rhs) {}
+    value evaluate() const override { return value{_lhs->evaluate().int_value() / _rhs->evaluate().int_value()}; }
+    expression_type type() const override { return expression_type::DIV; }
+};
+
+struct mod_expression : binary_expression {
+    explicit mod_expression(expression_parser* parser, expression* lhs, expression* rhs) noexcept : binary_expression(parser, lhs, rhs) {}
+    value evaluate() const override { return value{_lhs->evaluate().int_value() % _rhs->evaluate().int_value()}; }
+    expression_type type() const override { return expression_type::MOD; }
+};
+
+struct unary_expression : expression {
+    explicit unary_expression(expression_parser* parser, expression* operand) noexcept : expression(parser), _operand(operand) {}
+
+protected:
+    expression* _operand;
+};
+
+struct pos_expression : unary_expression {
+    explicit pos_expression(expression_parser* parser, expression* operand) noexcept : unary_expression(parser, operand) {}
+    value evaluate() const override { return value{+_operand->evaluate().int_value()}; }
+    expression_type type() const override { return expression_type::POS; }
+};
+
+struct neg_expression : unary_expression {
+    explicit neg_expression(expression_parser* parser, expression* operand) noexcept : unary_expression(parser, operand) {}
+    value evaluate() const override { return value{u32(-i32(_operand->evaluate().int_value()))}; }
+    expression_type type() const override { return expression_type::NEG; }
+};
+
+struct not_expression : unary_expression {
+    explicit not_expression(expression_parser* parser, expression* operand) noexcept : unary_expression(parser, operand) {}
+    value evaluate() const override { return value{!_operand->evaluate().int_value()}; }
+    expression_type type() const override { return expression_type::NOT; }
+};
+
+struct bit_not_expression : unary_expression {
+    explicit bit_not_expression(expression_parser* parser, expression* operand) noexcept : unary_expression(parser, operand) {}
+    value evaluate() const override { return value{~_operand->evaluate().int_value()}; }
+    expression_type type() const override { return expression_type::BIT_NOT; }
+};
+
+//struct defined_expression : unary_expression {
+//    explicit defined_expression(expression_parser* parser, expression* operand) noexcept : unary_expression(parser, operand) {}
+//    value evaluate() const override {
+//
+//        // error 
+//        return value{0};
+//    }
+//    expression_type type() const override { return expression_type::DEF; }
+//};
+
+struct literal_expression : expression {
+    explicit literal_expression(expression_parser* parser, u32 value) noexcept : expression(parser), _value(value) {}
+    value evaluate() const override { return _value; }
+    expression_type type() const override { return expression_type::LITERAL; }
+
+protected:
+    value _value;
+};
+
+struct name_expression : expression {
+    explicit name_expression(expression_parser* parser, lexeme* name) : expression(parser), _name(name) {}
+    value evaluate() const override { return value{0}; }
+    expression_type type() const override { return expression_type::NAME; }
+    std::string_view name() const {
+        return _name->text;
+    }
+
+protected:
+    lexeme* _name;
+};
+
+struct expression_parser {
+    expression_parser(preprocessor* p) : _preprocessor(p) {}
+    ~expression_parser() {
+        while (_chunks) {
+            auto next = _chunks->next;
+            delete _chunks;
+            _chunks = next;
+        }
+    }
+
+    void error(lexeme* l, const char* msg) {
+        _preprocessor->error(l, msg);
+    }
+
+    expression* parse(lex_iter beg, lex_iter end) {
+        auto begin = beg;
+        while (beg != end) {
+            if (beg->type != lexeme_type::IDENTIFIER) {
+                beg = next_lexeme(beg, end);
+                continue;
+            }
+
+            if (beg->text != sym_defined) {
+                beg = _preprocessor->replace_identifier(beg);
+                continue;
+            }
+
+            auto it = next_lexeme(beg, end);
+            if (it == end) {
+                error(&*beg, "missing operand for operator \"defined\"");
+                return nullptr;
+            }
+            bool paren_used = false;
+            if (it->type == lexeme_type::OPEN_PAREN) {
+                paren_used = true;
+                it = next_lexeme(it, end);
+                if (it == end) {
+                    error(&*beg, "missing operand for operator \"defined\"");
+                    return nullptr;
+                }
+            }
+            if (it->type == lexeme_type::IDENTIFIER) {
+                beg = _preprocessor->insert(beg, create_lexeme(
+                    beg->file_path,
+                    lexeme_type::DECIMAL,
+                    beg->line,
+                    beg->line_offset,
+                    beg->src_length,
+                    _preprocessor->is_defined(it->text) ? sym_one : sym_zero
+                ));
+            } else {
+                error(&*it, "expected identifier");
+                return nullptr;
+            }
+            if (paren_used) {
+                it = next_lexeme(it, end);
+                if (it == end) {
+                    error(&*it, "missing closing parenthesis");
+                    return nullptr;
+                }
+                if (it->type != lexeme_type::CLOSE_PAREN) {
+                    error(&*it, "expected closing parenthesis");
+                    return nullptr;
+                }
+            }
+            auto rem_it = beg;
+            _preprocessor->remove(++rem_it, ++it);
+            beg = it;
+        }
+        // 1) replace defined operator
+        // 2) resolve all macros, any remaining identifiers in expression cause errors
+        // 3) parse expression and return it
+        return or_expr(begin, end);
+    }
+
+    expression* or_expr(lex_iter& l, lex_iter end) {
+        auto result = and_expr(l, end);
+        if (result == nullptr)
+            return nullptr;
+        while (l != end && l->type == lexeme_type::OR) {
+            l = next_lexeme(l, end);
+            auto rhs = and_expr(l, end);
+            if (rhs == nullptr)
+                return nullptr;
+            result = create<or_expression>(result, rhs);
+        }
+        return result;
+    }
+
+    expression* and_expr(lex_iter& l, lex_iter end) {
+        auto result = cmp_expr(l, end);
+        if (result == nullptr)
+            return nullptr;
+        while (l != end && l->type == lexeme_type::AND) {
+            l = next_lexeme(l, end);
+            auto rhs = cmp_expr(l, end);
+            if (rhs == nullptr)
+                return nullptr;
+            result = create<and_expression>(result, rhs);
+        }
+        return result;
+    }
+
+    expression* cmp_expr(lex_iter& l, lex_iter end) {
+        auto result = bit_or_expr(l, end);
+        if (result == nullptr)
+            return nullptr;
+        while (l != end) {
+            if (l->type == lexeme_type::EQ_EQ) {
+                l = next_lexeme(l, end);
+                auto rhs = bit_or_expr(l, end);
+                if (rhs == nullptr)
+                    return nullptr;
+                result = create<eq_expression>(result, rhs);
+            } else if (l->type == lexeme_type::NEQ) {
+                l = next_lexeme(l, end);
+                auto rhs = bit_or_expr(l, end);
+                if (rhs == nullptr)
+                    return nullptr;
+                result = create<neq_expression>(result, rhs);
+            } else if (l->type == lexeme_type::GT) {
+                l = next_lexeme(l, end);
+                auto rhs = bit_or_expr(l, end);
+                if (rhs == nullptr)
+                    return nullptr;
+                result = create<gt_expression>(result, rhs);
+            } else if (l->type == lexeme_type::GT_EQ) {
+                l = next_lexeme(l, end);
+                auto rhs = bit_or_expr(l, end);
+                if (rhs == nullptr)
+                    return nullptr;
+                result = create<geq_expression>(result, rhs);
+            } else if (l->type == lexeme_type::LT) {
+                l = next_lexeme(l, end);
+                auto rhs = bit_or_expr(l, end);
+                if (rhs == nullptr)
+                    return nullptr;
+                result = create<lt_expression>(result, rhs);
+            } else if (l->type == lexeme_type::LT_EQ) {
+                l = next_lexeme(l, end);
+                auto rhs = bit_or_expr(l, end);
+                if (rhs == nullptr)
+                    return nullptr;
+                result = create<leq_expression>(result, rhs);
+            } else {
+                break;
+            }
+        }
+        return result;
+    }
+
+    expression* bit_or_expr(lex_iter& l, lex_iter end) {
+        auto result = bit_and_expr(l, end);
+        if (result == nullptr)
+            return nullptr;
+        while (l != end) {
+            if (l->type == lexeme_type::BIT_OR) {
+                l = next_lexeme(l, end);
+                auto rhs = bit_and_expr(l, end);
+                if (rhs == nullptr)
+                    return nullptr;
+                result = create<bit_or_expression>(result, rhs);
+            } else if (l->type == lexeme_type::BIT_XOR) {
+                l = next_lexeme(l, end);
+                auto rhs = bit_and_expr(l, end);
+                if (rhs == nullptr)
+                    return nullptr;
+                result = create<bit_xor_expression>(result, rhs);
+            } else {
+                break;
+            }
+        }
+        return result;
+    }
+
+    expression* bit_and_expr(lex_iter& l, lex_iter end) {
+        auto result = shift_expr(l, end);
+        if (result == nullptr)
+            return nullptr;
+        while (l != end && l->type == lexeme_type::BIT_AND) {
+            l = next_lexeme(l, end);
+            auto rhs = shift_expr(l, end);
+            if (rhs == nullptr)
+                return nullptr;
+            result = create<bit_and_expression>(result, rhs);
+        }
+        return result;
+    }
+
+    expression* shift_expr(lex_iter& l, lex_iter end) {
+        auto result = add_expr(l, end);
+        if (result == nullptr)
+            return nullptr;
+        while (l != end) {
+            if (l->type == lexeme_type::SHL) {
+                l = next_lexeme(l, end);
+                auto rhs = add_expr(l, end);
+                if (rhs == nullptr)
+                    return nullptr;
+                result = create<shl_expression>(result, rhs);
+            } else if (l->type == lexeme_type::SHR) {
+                l = next_lexeme(l, end);
+                auto rhs = add_expr(l, end);
+                if (rhs == nullptr)
+                    return nullptr;
+                result = create<shr_expression>(result, rhs);
+            } else if (l->type == lexeme_type::SHR_UNSIGNED) {
+                l = next_lexeme(l, end);
+                auto rhs = add_expr(l, end);
+                if (rhs == nullptr)
+                    return nullptr;
+                result = create<shru_expression>(result, rhs);
+            } else {
+                break;
+            }
+        }
+        return result;
+    }
+
+    expression* add_expr(lex_iter& l, lex_iter end) {
+        auto result = mul_expr(l, end);
+        if (result == nullptr)
+            return nullptr;
+        while (l != end) {
+            if (l->type == lexeme_type::PLUS) {
+                l = next_lexeme(l, end);
+                auto rhs = mul_expr(l, end);
+                if (rhs == nullptr)
+                    return nullptr;
+                result = create<add_expression>(result, rhs);
+            } else if (l->type == lexeme_type::MINUS) {
+                l = next_lexeme(l, end);
+                auto rhs = mul_expr(l, end);
+                if (rhs == nullptr)
+                    return nullptr;
+                result = create<sub_expression>(result, rhs);
+            } else {
+                break;
+            }
+        }
+        return result;
+    }
+
+    expression* mul_expr(lex_iter& l, lex_iter end) {
+        auto result = pow_expr(l, end);
+        if (result == nullptr)
+            return nullptr;
+        while (l != end) {
+            if (l->type == lexeme_type::MUL) {
+                l = next_lexeme(l, end);
+                auto rhs = pow_expr(l, end);
+                if (rhs == nullptr)
+                    return nullptr;
+                result = create<mul_expression>(result, rhs);
+            } else if (l->type == lexeme_type::DIV) {
+                l = next_lexeme(l, end);
+                auto rhs = pow_expr(l, end);
+                if (rhs == nullptr)
+                    return nullptr;
+                result = create<div_expression>(result, rhs);
+            } else if (l->type == lexeme_type::MOD) {
+                l = next_lexeme(l, end);
+                auto rhs = pow_expr(l, end);
+                if (rhs == nullptr)
+                    return nullptr;
+                result = create<mod_expression>(result, rhs);
+            } else {
+                break;
+            }
+        }
+        return result;
+    }
+
+    expression* pow_expr(lex_iter& l, lex_iter end) {
+        auto result = unary_expr(l, end);
+        // maybe in the future if we support floats
+        return result;
+    }
+
+    expression* unary_expr(lex_iter& l, lex_iter end) {
+        if (l->type == lexeme_type::PLUS) {
+            l = next_lexeme(l, end);
+            return create<pos_expression>(unary_expr(l, end));
+        } else if (l->type == lexeme_type::MINUS) {
+            l = next_lexeme(l, end);
+            return create<neg_expression>(unary_expr(l, end));
+        } else if (l->type == lexeme_type::NOT) {
+            l = next_lexeme(l, end);
+            return create<not_expression>(unary_expr(l, end));
+        } else if (l->type == lexeme_type::BIT_NOT) {
+            l = next_lexeme(l, end);
+            return create<bit_not_expression>(unary_expr(l, end));
+        //} else if (l->type == lexeme_type::IDENTIFIER && l->text == sym_defined) {
+        //    l = next_lexeme(l, end);
+        //    auto name = paren_expr(l, end);
+        //    if (name->type() == expression_type::NAME) {
+        //        bool defined = _preprocessor->is_defined(reinterpret_cast<name_expression*>(name)->name());
+        //        return create<literal_expression>(i32(defined));
+        //    }
+        //    return create<bit_not_expression>(name);
+        }
+        return paren_expr(l, end);
+    }
+
+    expression* paren_expr(lex_iter& l, lex_iter end) {
+        if (l->type == lexeme_type::IDENTIFIER) {
+            auto result = create<name_expression>(&*l);
+            error(&*l, "undefined macro, substituting 0");
+            l = next_lexeme(l, end);
+            return result;
+        } else if (l->type == lexeme_type::DECIMAL) {
+            u32 val = 0;
+            auto err = std::from_chars(&*l->text.begin(), &*l->text.end(), val, 10);
+            if (err.ec != std::errc{} || err.ptr != &*l->text.end()) {
+                error(&*l, "value too large");
+                val = INT_MAX;
+            }
+            l = next_lexeme(l, end);
+            return create<literal_expression>(val);
+        } else if (l->type == lexeme_type::OCTAL) {
+            u32 val = 0;
+            auto err = std::from_chars(&*l->text.begin(), &*l->text.end(), val, 8);
+            if (err.ec != std::errc{} || err.ptr != &*l->text.end()) {
+                error(&*l, "value too large");
+                val = INT_MAX;
+            }
+            l = next_lexeme(l, end);
+            return create<literal_expression>(val);
+        } else if (l->type == lexeme_type::HEXADECIMAL) {
+            u32 val = 0;
+            auto err = std::from_chars(&l->text[2], &*l->text.end(), val, 16); // skip 0x/0X
+            if (err.ec != std::errc{} || err.ptr != &*l->text.end()) {
+                error(&*l, "value too large");
+                val = INT_MAX;
+            }
+            l = next_lexeme(l, end);
+            return create<literal_expression>(val);
+        } else if (l->type == lexeme_type::OPEN_PAREN) {
+            l = next_lexeme(l, end);
+            auto result = or_expr(l, end);
+            if (l->type != lexeme_type::CLOSE_PAREN) {
+                error(&*l, "missing )");
+                // probably fine to infer closing parentheses at the end
+                return result;
+            }
+            l = next_lexeme(l, end);
+            return result;
+        }
+        error(&*l, "unexpected token");
+        return nullptr;
+    }
+
+private:
+    template<typename T, typename... Args>
+    T* create(Args&&... args) {
+        //static_assert(std::is_trivially_destructible_v<T>);
+
+        if (_chunks == nullptr || (&*_chunks->data.end() - sizeof(T) < _chunks->head)) {
+            auto c = new chunk{};
+            c->head = c->data.data();
+            c->next = _chunks;
+            _chunks = c;
+        }
+
+        T* result = new(_chunks->head) T(this, std::forward<Args>(args)...);
+        _chunks->head += sizeof(T);
+        return result;
+    }
+
+    struct chunk {
+        std::array<std::byte, 65536> data{};
+        std::byte* head{};
+        chunk* next{};
+    };
+    chunk* _chunks{};
+    preprocessor* _preprocessor{};
+};
+
+preprocessor::preprocessor(
+    std::ostream& out,
+    std::vector<fs::path> include_dirs,
+    std::vector<define> defines
+) :
+    _out(&out),
+    _include_dirs(include_dirs),
+    _expr_parser(std::make_unique<expression_parser>(this)),
+    _if_depth(0),
+    _erasing_depth(0),
+    _else_seen() {
+    for (auto&& def : defines) {
+        _defines.emplace(def.name.text, def);
+    }
+    _else_seen.push_back(true);
+}
+
+// need this here to avoid having to define expression_parser in the header
+preprocessor::~preprocessor() = default;
 
 bool preprocessor::preprocess_file(fs::path in) {
     if (fs::exists(in) == false || fs::is_directory(in))
@@ -32,8 +693,7 @@ bool preprocessor::preprocess_file(fs::path in) {
 
     std::vector<std::string> files;
     std::vector<std::vector<char>> content;
-    std::vector<std::string> errors;
-    
+
     fs::path path = in;
     auto l = _lexemes.begin();
     auto end = _lexemes.end();
@@ -43,12 +703,9 @@ bool preprocessor::preprocess_file(fs::path in) {
     auto define_name = l;
     bool first_file = true;
 
-#define PP_ERR(MSG) \
-    do { \
-        errors.push_back(std::format("{}:{} {}\n", l->file_path, l->line, MSG));\
-    } while(0)
+#define PP_ERR(MSG) error(&*l, MSG)
 
-file:
+    file:
     {
         auto&& c = content.emplace_back(std::size_t(fs::file_size(path)));
         std::fstream f{path.c_str(), std::ios::in | std::ios::binary};
@@ -58,7 +715,7 @@ file:
         auto lex_result = lexer{*(files.rbegin())}.run(&*c.begin(), (&*c.begin()) + c.size());
         if (lex_result.errors.size() > 0) {
             for (auto&& e : lex_result.errors) {
-                errors.push_back(std::format("{}:{} {}\n", *(files.rbegin()), e.line, e.explanation));
+                _errors.push_back(std::format("{}({},{}): {}\n", *(files.rbegin()), e.line, e.line_offset, e.explanation));
             }
             return false;
         }
@@ -89,13 +746,13 @@ dispatch:
             goto dispatch;
 
         default:
-            do {
-                auto it = l++;
+            while (l != end && l->type != lexeme_type::LINE_END) {
                 if (_erasing_depth > 0) {
-                    _lexemes.erase_and_dispose(it, lexeme::disposer{});
+                    _lexemes.erase_and_dispose(l++, lexeme::disposer{});
+                } else {
+                    l = replace_identifier(l);
                 }
-                replace_identifier(&*it);
-            } while (l != end && l->type != lexeme_type::LINE_END);
+            }
             goto dispatch;
     }
 
@@ -108,17 +765,17 @@ directive:
         if (l->text == dir_else) {
             goto else_directive;
         } else if (l->text == dir_elif) {
-
+            goto elif_directive;
         } else if (l->text == dir_endif) {
             goto endif_directive;
         } else if (_erasing_depth > 0) {
             while (l != end && l->type != lexeme_type::LINE_END) {
                 ++l;
             }
-            _lexemes.erase_and_dispose(dir_start, l, lexeme::disposer{});
+            remove(dir_start, l);
             goto dispatch;
         } else if (l->text == dir_if) {
-
+            goto if_directive;
         } else if (l->text == dir_ifdef) {
             goto ifdef_directive;
         } else if (l->text == dir_undef) {
@@ -142,7 +799,7 @@ other:
         goto dispatch;
     } else {
         auto it = l++;
-        replace_identifier(&*it);
+        replace_identifier(it);
         goto other;
     }
 
@@ -164,7 +821,29 @@ else_directive:
             }
             ++l;
         }
-        _lexemes.erase_and_dispose(dir_start, l, lexeme::disposer{});
+        remove(dir_start, l);
+    }
+    goto dispatch;
+
+elif_directive:
+    if (_if_depth == 0) {
+        PP_ERR("spurious elif");
+    } else if (_else_seen[_if_depth]) {
+        PP_ERR("elif after else");
+    } else {
+        expression_parser parser{this};
+        auto expr_begin = ++l;
+        auto expr_end = seek_line_end(l, end);
+        expression* expr = parser.parse(expr_begin, expr_end);
+        if (expr) {
+            value v = expr->evaluate();
+            _erasing_depth = v.int_value() ? 0 : _if_depth;
+        } else {
+            PP_ERR("error parsing expression");
+            _erasing_depth = _if_depth;
+        }
+        remove(dir_start, expr_end);
+        l = expr_end;
     }
     goto dispatch;
 
@@ -181,9 +860,30 @@ endif_directive:
             }
             ++l;
         }
-        _lexemes.erase_and_dispose(dir_start, l, lexeme::disposer{});
+        remove(dir_start, l);
     } else {
         PP_ERR("spurious endif");
+    }
+    goto dispatch;
+
+if_directive:
+    {
+        expression_parser parser{this};
+        auto expr_begin = ++l;
+        auto expr_end = seek_line_end(l, end);
+        expression* expr = parser.parse(expr_begin, expr_end);
+        _if_depth += 1;
+        if (_if_depth >= _else_seen.size())
+            _else_seen.push_back(false);
+        if (expr) {
+            value v = expr->evaluate();
+            _erasing_depth = v.int_value() ? 0 : _if_depth;
+        } else {
+            PP_ERR("error parsing expression");
+            _erasing_depth = _if_depth;
+        }
+        remove(dir_start, expr_end);
+        l = expr_end;
     }
     goto dispatch;
 
@@ -202,21 +902,20 @@ ifdef_directive:
 
 ifdef_define:
     {
-        while (l != end && l->type == lexeme_type::LINE_END) {
+        while (l != end && l->type != lexeme_type::LINE_END) {
             if (l->type != lexeme_type::WHITESPACE && l->type != lexeme_type::COMMENT) {
                 PP_ERR("unexpected token");
             }
             ++l;
         }
-        auto it = _defines2.find(define_name->text);
         _if_depth += 1;
         if (_if_depth >= _else_seen.size())
             _else_seen.push_back(false);
-        if (it == _defines2.end() && _erasing_depth <= 0) {
+        if (is_defined(define_name->text) && _erasing_depth <= 0) {
             _erasing_depth = _if_depth;
         }
 
-        _lexemes.erase_and_dispose(dir_start, l, lexeme::disposer{});
+        remove(dir_start, l);
     }
     goto dispatch;
 
@@ -235,11 +934,11 @@ undef_directive:
 
 undef_define:
     {
-        auto def = _defines2.find(define_name->text);
-        if (def == _defines2.end()) {
+        auto def = _defines.find(define_name->text);
+        if (def == _defines.end()) {
             PP_ERR("macro not defined");
         }
-        _defines2.erase(def);
+        _defines.erase(def);
     }
     while (l != end && l->type == lexeme_type::LINE_END) {
         if (l->type != lexeme_type::WHITESPACE && l->type != lexeme_type::COMMENT) {
@@ -247,7 +946,7 @@ undef_define:
         }
         ++l;
     }
-    _lexemes.erase_and_dispose(dir_start, l, lexeme::disposer{});
+    remove(dir_start, l);
     goto dispatch;
 
 
@@ -272,8 +971,8 @@ define_parameters:
         for (l = next_lexeme(define_name, end); l != end && l->type != lexeme_type::LINE_END; l = next_lexeme(l, end)) {
             c.push_back(*l);
         }
-        _defines2.emplace(define_name->text, define2{*define_name, std::move(c)});
-        _lexemes.erase_and_dispose(dir_start, l, lexeme::disposer{});
+        _defines.emplace(define_name->text, define{*define_name, std::move(c)});
+        remove(dir_start, l);
     }
     goto dispatch;
 
@@ -298,15 +997,14 @@ ifndef_define:
             }
             ++l;
         }
-        auto it = _defines2.find(define_name->text);
         _if_depth += 1;
         if (_if_depth >= _else_seen.size())
             _else_seen.push_back(false);
-        if (it != _defines2.end() && _erasing_depth <= 0) {
+        if (is_defined(define_name->text) && _erasing_depth <= 0) {
             _erasing_depth = _if_depth;
         }
 
-        _lexemes.erase_and_dispose(dir_start, l, lexeme::disposer{});
+        remove(dir_start, l);
     }
     goto dispatch;
 
@@ -335,7 +1033,7 @@ include_rel:
     }
     path = in.remove_filename() / include_content->text.substr(1, include_content->text.size() - 2);
     if (fs::exists(path) && fs::is_directory(path) == false) {
-        _lexemes.erase_and_dispose(dir_start, l, lexeme::disposer{});
+        remove(dir_start, l);
         goto file;
     }
     goto include_file;
@@ -351,26 +1049,26 @@ include_dir:
                 goto other;
 
             case lexeme_type::GT:
-                {
-                    auto l2 = _lexemes.insert(include_content, *new lexeme{
-                        include_content->file_path,
-                        lexeme_type::INCLUDE_STRING,
-                        include_content->line,
-                        include_content->line_offset,
-                        i32(l->text.end() - include_content->text.begin()),
-                        std::string_view{include_content->text.begin(), l->text.end()}
-                    });
-                    _lexemes.erase_and_dispose(include_content, ++l, lexeme::disposer{});
-                    include_content = l2;
-                }
+            {
+                auto l2 = _lexemes.insert(include_content, *create_lexeme(
+                    include_content->file_path,
+                    lexeme_type::INCLUDE_STRING,
+                    include_content->line,
+                    include_content->line_offset,
+                    i32(l->text.end() - include_content->text.begin()),
+                    std::string_view{include_content->text.begin(), l->text.end()}
+                ));
+                remove(include_content, ++l);
+                include_content = l2;
+            }
 
-                while (l != end && l->type != lexeme_type::LINE_END) {
-                    if (l->type != lexeme_type::WHITESPACE && l->type != lexeme_type::COMMENT) {
-                        PP_ERR("unexpected tokens");
-                    }
-                    ++l;
+            while (l != end && l->type != lexeme_type::LINE_END) {
+                if (l->type != lexeme_type::WHITESPACE && l->type != lexeme_type::COMMENT) {
+                    PP_ERR("unexpected tokens");
                 }
-                goto include_file;
+                ++l;
+            }
+            goto include_file;
 
             default:
                 goto include_dir;
@@ -381,7 +1079,7 @@ include_file:
     for (auto&& dir : _include_dirs) {
         path = dir / include_content->text.substr(1, include_content->text.size() - 2);
         if (fs::exists(path) && fs::is_directory(path) == false) {
-            _lexemes.erase_and_dispose(dir_start, l, lexeme::disposer{});
+            remove(dir_start, l);
             break;
         }
     }
@@ -393,8 +1091,8 @@ include_file:
 
 eof:
 
-    if (errors.size() > 0) {
-        for (auto&& s : errors) {
+    if (_errors.size() > 0) {
+        for (auto&& s : _errors) {
             std::cout << s;
         }
 
@@ -413,20 +1111,56 @@ eof:
     }
 }
 
-void preprocessor::replace_identifier(lexeme* ident) {
-    if (ident->type != lexeme_type::IDENTIFIER)
-        return;
-
-    auto r = _defines2.find(std::string{ident->text});
-    if (r != _defines2.end() && r->second.has_parameters == false && _used_defines.contains(r->second.name.text) == false) {
-        auto&& [uit, success] = _used_defines.emplace(r->second.name.text);
-        auto iter = _lexemes.iterator_to(*ident);
-        for (auto&& c : r->second.content) {
-            auto l = new lexeme{c};
-            replace_identifier(&*_lexemes.insert(iter, *l)); // recurse
-        }
-        _lexemes.erase_and_dispose(iter, lexeme::disposer{});
-        _used_defines.erase(uit);
+lex_iter preprocessor::replace_identifier(lex_iter id_lex) {
+    if (id_lex->type == lexeme_type::META_USED_DEFINE_POP) {
+        _used_defines.pop_back();
+        _lexemes.erase_and_dispose(id_lex++, lexeme::disposer{});
+        return id_lex;
     }
+    if (id_lex->type != lexeme_type::IDENTIFIER)
+        return id_lex;
+
+    auto r = _defines.find(id_lex->text);
+    if (r != _defines.end() &&
+        r->second.has_parameters == false &&
+        std::find(_used_defines.begin(), _used_defines.end(), &r->second) == _used_defines.end()
+    ) {
+        auto ins_iter = id_lex;
+        ++ins_iter;
+        _used_defines.push_back(&r->second);
+        for (auto&& c : r->second.content)
+            _lexemes.insert(ins_iter, *create_lexeme(c));
+
+        _lexemes.insert(ins_iter, *create_lexeme(
+            id_lex->file_path,
+            lexeme_type::META_USED_DEFINE_POP,
+            id_lex->line,
+            id_lex->line_offset,
+            id_lex->src_length,
+            ""
+        ));
+
+        auto rem_iter = id_lex++;
+        _lexemes.erase_and_dispose(rem_iter, lexeme::disposer{});
+    }
+    return id_lex;
+}
+
+lex_iter preprocessor::insert(lex_iter where, lexeme* l) {
+    if (l == nullptr)
+        return {};
+    return _lexemes.insert(where, *l);
+}
+
+void preprocessor::remove(lex_iter beg, lex_iter end) {
+    _lexemes.erase_and_dispose(beg, end, lexeme::disposer{});
+}
+
+bool preprocessor::is_defined(std::string_view name) {
+    return _defines.find(name) != _defines.end();
+}
+
+void preprocessor::error(lexeme* l, const char* msg) {
+    _errors.push_back(std::format("{}({},{}): {}\n", l->file_path, l->line, l->line_offset, msg));
 }
 

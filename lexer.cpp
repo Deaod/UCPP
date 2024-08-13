@@ -38,19 +38,19 @@ lexer::result lexer::run(char* begin, char* end) {
     auto token_start = c;
     i32 token_line = 1;
     i32 token_offset = 0;
-    boost::intrusive::list<lexeme> lexemes;
+    lexeme_list lexemes;
     std::vector<lex_err> errors;
 
 #define PRODUCE(TOKEN)                                                 \
     do {                                                               \
-        lexemes.push_back(*new lexeme{                                 \
+        lexemes.push_back(*create_lexeme(                              \
             file_path,                                                 \
             lexeme_type::TOKEN,                                        \
             token_line,                                                \
             token_offset,                                              \
             i32(c - token_start),                                      \
             std::string_view{ &*token_start, size_t(c - token_start) } \
-        });                                                            \
+        ));                                                            \
     } while(0)                                                         \
 
 #define LEX_ERR(MSG)                                                    \
@@ -234,6 +234,9 @@ asterisk:
     } else if (*c == '=') {
         ++c;
         PRODUCE(MUL_EQ);
+    } else if (*c == '*') {
+        ++c;
+        PRODUCE(POW);
     } else {
         PRODUCE(MUL);
     }
@@ -726,7 +729,7 @@ close_bracket:
 
 eof:
     if (lexemes.rbegin()->type != lexeme_type::LINE_END)
-        lexemes.push_back(*new lexeme{file_path, lexeme_type::LINE_END, line, i32(c - line_start), 1, "\n"});
+        lexemes.push_back(*create_lexeme(file_path, lexeme_type::LINE_END, line, i32(c - line_start), 1, "\n"));
 
     return { std::move(lexemes), errors };
 
@@ -735,13 +738,6 @@ eof:
 #undef GOTO
 #undef NEW_LINE
 }
-
-struct chunk {
-    std::array<std::byte, sizeof(lexeme) * 4096> data;
-    std::byte* head;
-    chunk* next;
-};
-static chunk* chunks_head;
 
 void lexeme::write_to(std::ostream& os, const lexeme& next) {
     switch (type) {
@@ -778,6 +774,7 @@ void lexeme::write_to(std::ostream& os, const lexeme& next) {
         case lexeme_type::PLUS:
         case lexeme_type::MINUS:
         case lexeme_type::MUL:
+        case lexeme_type::POW:
         case lexeme_type::DIV:
         case lexeme_type::MOD:
         case lexeme_type::CONCAT:
@@ -809,7 +806,22 @@ void lexeme::write_to(std::ostream& os) {
     os.write(text.data(), text.length());
 }
 
-void* lexeme::operator new(size_t s) {
+struct chunk {
+    std::array<std::byte, sizeof(lexeme) * 4096> data;
+    std::byte* head;
+    chunk* next;
+};
+static chunk* chunks_head;
+
+void* allocate_lexeme_space() {
+    static int _atexit_failed = std::atexit([]() {
+        while (chunks_head) {
+            auto c = chunks_head->next;
+            delete chunks_head;
+            chunks_head = c;
+        }
+    });
+
     if (chunks_head == nullptr || chunks_head->head == (void*) &chunks_head->head) {
         auto c = new chunk{};
         c->head = c->data.data();
@@ -818,13 +830,9 @@ void* lexeme::operator new(size_t s) {
     }
 
     auto that = chunks_head->head;
-    chunks_head->head += s;
+    chunks_head->head += sizeof(lexeme);
 
     return that;
-}
-
-void lexeme::operator delete(void* p) {
-
 }
 
 tokenizer::result tokenizer::run(const boost::intrusive::list<lexeme>& lexemes) {

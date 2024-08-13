@@ -38,6 +38,7 @@ enum class lexeme_type : char {
     DECREMENT,
     MUL,
     MUL_EQ,
+    POW,
     DIV,
     DIV_EQ,
     MOD,
@@ -68,6 +69,8 @@ enum class lexeme_type : char {
     OPEN_BRACKET,
     CLOSE_BRACKET,
     COMMENT,
+
+    META_USED_DEFINE_POP,
 };
 
 struct lexeme : boost::intrusive::list_base_hook<> {
@@ -92,14 +95,16 @@ struct lexeme : boost::intrusive::list_base_hook<> {
     void write_to(std::ostream& os);
 
     struct disposer {
-        void operator()(lexeme* l) const {
-            delete l;
-        }
+        void operator()(lexeme* l) const {}
     };
-
-    static void* operator new(size_t s);
-    static void operator delete(void* p);
 };
+
+void* allocate_lexeme_space();
+
+template<typename... Args>
+lexeme* create_lexeme(Args&&... args) {
+    return new(allocate_lexeme_space()) lexeme(std::forward<Args>(args)...);
+}
 
 struct lex_err {
     explicit lex_err(std::string_view problem, std::string_view explanation, i32 line, i32 line_offset) :
@@ -112,12 +117,15 @@ struct lex_err {
     i32 line_offset;
 };
 
+using lexeme_list = boost::intrusive::list<lexeme>;
+using lex_iter = lexeme_list::iterator;
+
 class lexer {
 public:
     lexer(std::string_view fp) : file_path(fp) {}
 
     struct result {
-        boost::intrusive::list<lexeme> lexemes;
+        lexeme_list lexemes;
         std::vector<lex_err> errors;
     };
     result run(std::vector<char>& v) { return run(&*v.begin(), &*v.end()); }

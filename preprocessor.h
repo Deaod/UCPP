@@ -45,17 +45,17 @@ struct string_hash {
     }
 };
 
-struct define2 {
+struct define {
     lexeme name;
     std::vector<lexeme> content;
     bool has_parameters = false;
     std::vector<lexeme> parameters;
 
-    define2(lexeme name, std::vector<lexeme> content) :
+    define(lexeme name, std::vector<lexeme> content) :
         name(name), content(content), has_parameters(false), parameters()
     {}
 
-    define2(lexeme name, std::vector<lexeme> content, std::vector<lexeme> parameters) :
+    define(lexeme name, std::vector<lexeme> content, std::vector<lexeme> parameters) :
         name(name),
         content(content),
         has_parameters(true),
@@ -68,30 +68,26 @@ public:
     explicit preprocessor(
         std::ostream& out,
         std::vector<fs::path> include_dirs,
-        std::vector<define2> defines
-    ) :
-        _out(&out),
-        _include_dirs(include_dirs),
-        _if_depth(0),
-        _erasing_depth(0),
-        _else_seen()
-    {
-        for (auto&& def : defines) {
-            _defines2.emplace(def.name.text, def);
-        }
-        _else_seen.push_back(true);
-    }
+        std::vector<define> defines
+    );
+    ~preprocessor();
 
     bool preprocess_file(fs::path in);
-    void replace_identifier(lexeme* ident);
+    lex_iter replace_identifier(lex_iter id);
+    lex_iter insert(lex_iter where, lexeme* l);
+    void remove(lex_iter beg, lex_iter end);
+    bool is_defined(std::string_view name);
+    void error(lexeme* l, const char* msg);
 
 private:
     std::ostream* _out;
     std::vector<fs::path> _include_dirs;
+    std::unique_ptr<struct expression_parser> _expr_parser;
     
-    boost::intrusive::list<lexeme> _lexemes;
-    phmap::flat_hash_map<std::string, define2, string_hash> _defines2;
-    phmap::flat_hash_set<std::string, string_hash> _used_defines;
+    lexeme_list _lexemes;
+    phmap::flat_hash_map<std::string, define, string_hash> _defines;
+    std::vector<define*> _used_defines;
+    std::vector<std::string> _errors;
 
     int _if_depth;
     int _erasing_depth;
