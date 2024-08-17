@@ -26,7 +26,8 @@ add_executable(UCPP
     "lexer.h"
     "lexer.cpp"
     "scope_guard.h"
-    "parser.cpp" "decoder.cpp")
+    "file_service.h"
+    "file_service.cpp")
 set_target_properties(UCPP PROPERTIES CXX_STANDARD 23)
 target_include_directories(UCPP PRIVATE Boost_INCLUDE_DIR ${PARALLEL_HASHMAP_INCLUDE_DIRS} xxHash_INCLUDE_DIR)
 target_link_libraries(UCPP PRIVATE Boost::boost Boost::program_options Boost::system)

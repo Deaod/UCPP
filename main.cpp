@@ -8,12 +8,12 @@ namespace fs = std::filesystem;
 #include <boost/program_options.hpp>
 namespace opt = boost::program_options;
 
+#include "file_service.h"
 #include "preprocessor.h"
 
 constexpr const auto lf = "\n";
 
 std::unique_ptr<std::ofstream> output_file;
-std::unique_ptr<std::ifstream> input_file;
 
 int main(int argc, char* argv[]) {
     opt::options_description options{ "Command-Line Options" };
@@ -46,39 +46,21 @@ int main(int argc, char* argv[]) {
         }
     }();
 
-    auto&& in = [&]() -> std::istream& {
+    auto in_path = [&]() -> std::string {
         auto i = vm.find("input");
         if (i == vm.end()) {
-            return std::cin;
+            return "";
         } else {
-            input_file.reset(new std::ifstream(i->second.as<std::string>().c_str(), std::ios::binary | std::ios::in));
-            return *input_file;
+            return i->second.as<std::string>();
         }
     }();
 
-    auto in_path = [&]() -> fs::path {
-        auto i = vm.find("input");
-        if (i == vm.end()) {
-            return {};
-        } else {
-            return { i->second.as<std::string>() };
-        }
-    }();
-
-    std::vector<fs::path> include_dirs;
+    std::vector<std::string> include_dirs;
     auto dirs = vm.find("include-dir");
     if (dirs != vm.end()) {
-        for (auto&& dir : dirs->second.as<std::vector<std::string>>()) {
-            fs::path p(dir);
-
-            if (fs::is_directory(p) == false) {
-                std::cerr << "\"" << dir << "\" is not a directory" << lf;
-                continue;
-            }
-
-            include_dirs.push_back(p);
-        }
+        include_dirs = dirs->second.as<std::vector<std::string>>();
     }
+    filesystem_service fileser{include_dirs};
 
     std::vector<define> defines;
     auto defs = vm.find("define");
@@ -111,8 +93,11 @@ int main(int argc, char* argv[]) {
         }
     }
 
-    preprocessor pp{ out, include_dirs, defines };
-    if (pp.preprocess_file(in_path) == false) {
+    preprocessor pp{ out, &fileser, defines };
+    if (pp.preprocess_file(in_path, fs::current_path().string()) == false) {
+        for (auto&& s : pp.errors()) {
+            std::cerr << s;
+        }
         return EXIT_FAILURE;
     }
     return EXIT_SUCCESS;

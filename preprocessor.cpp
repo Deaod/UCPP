@@ -669,11 +669,11 @@ private:
 
 preprocessor::preprocessor(
     std::ostream& out,
-    std::vector<fs::path> include_dirs,
+    file_service* fserv,
     std::vector<define> defines
 ) :
     _out(&out),
-    _include_dirs(include_dirs),
+    _fserv(fserv),
     _expr_parser(std::make_unique<expression_parser>(this)),
     _if_depth(0),
     _erasing_depth(0),
@@ -687,14 +687,10 @@ preprocessor::preprocessor(
 // need this here to avoid having to define expression_parser in the header
 preprocessor::~preprocessor() = default;
 
-bool preprocessor::preprocess_file(fs::path in) {
-    if (fs::exists(in) == false || fs::is_directory(in))
-        return false;
-
+bool preprocessor::preprocess_file(std::string_view in, std::string_view cwd) {
     std::vector<std::string> files;
-    std::vector<std::vector<char>> content;
 
-    fs::path path = in;
+    auto fcont = _fserv->resolve_load(cwd, in);
     auto l = _lexemes.begin();
     auto end = _lexemes.end();
     auto dir_start = l;
@@ -703,16 +699,15 @@ bool preprocessor::preprocess_file(fs::path in) {
     auto define_name = l;
     bool first_file = true;
 
+    if (fcont.begin == nullptr)
+        return false;
+
 #define PP_ERR(MSG) error(&*l, MSG)
 
     file:
     {
-        auto&& c = content.emplace_back(std::size_t(fs::file_size(path)));
-        std::fstream f{path.c_str(), std::ios::in | std::ios::binary};
-        f.read(c.data(), c.size());
-
-        files.push_back(fs::absolute(path).string());
-        auto lex_result = lexer{*(files.rbegin())}.run(&*c.begin(), (&*c.begin()) + c.size());
+        files.push_back(fcont.file);
+        auto lex_result = lexer{*(files.rbegin())}.run(fcont.begin, fcont.end);
         if (lex_result.errors.size() > 0) {
             for (auto&& e : lex_result.errors) {
                 _errors.push_back(std::format("{}({},{}): {}\n", *(files.rbegin()), e.line, e.line_offset, e.explanation));
@@ -1031,12 +1026,13 @@ include_rel:
             PP_ERR("unexpected token");
         }
     }
-    path = in.remove_filename() / include_content->text.substr(1, include_content->text.size() - 2);
-    if (fs::exists(path) && fs::is_directory(path) == false) {
+    fcont = _fserv->resolve_load(files[0], include_content->text.substr(1, include_content->text.size() - 2));
+    if (fcont.begin) {
         remove(dir_start, l);
         goto file;
     }
-    goto include_file;
+    PP_ERR("could not find included file");
+    goto dispatch;
 
 include_dir:
     if (++l == end) {
@@ -1076,14 +1072,9 @@ include_dir:
     }
 
 include_file:
-    for (auto&& dir : _include_dirs) {
-        path = dir / include_content->text.substr(1, include_content->text.size() - 2);
-        if (fs::exists(path) && fs::is_directory(path) == false) {
-            remove(dir_start, l);
-            break;
-        }
-    }
-    if (fs::exists(path) && fs::is_directory(path) == false) {
+    fcont = _fserv->resolve_load("", include_content->text.substr(1, include_content->text.size() - 2));
+    if (fcont.begin) {
+        remove(dir_start, l);
         goto file;
     }
     PP_ERR("could not find included file");
@@ -1092,10 +1083,6 @@ include_file:
 eof:
 
     if (_errors.size() > 0) {
-        for (auto&& s : _errors) {
-            std::cout << s;
-        }
-
         return false;
     } else {
         auto cur = _lexemes.begin();

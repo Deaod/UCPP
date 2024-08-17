@@ -6,15 +6,14 @@
 #include <vector>
 #include <climits>
 #include <bitset>
-
-#include <filesystem>
-namespace fs = std::filesystem;
+#include <ranges>
 
 #include <parallel_hashmap/phmap.h>
 
 #define XXH_INLINE_ALL
 #include <xxhash.h>
 
+#include "file_service.h"
 #include "lexer.h"
 
 struct string_hash {
@@ -67,21 +66,24 @@ class preprocessor {
 public:
     explicit preprocessor(
         std::ostream& out,
-        std::vector<fs::path> include_dirs,
+        file_service* fserv,
         std::vector<define> defines
     );
     ~preprocessor();
 
-    bool preprocess_file(fs::path in);
+    bool preprocess_file(std::string_view in, std::string_view cwd);
     lex_iter replace_identifier(lex_iter id);
     lex_iter insert(lex_iter where, lexeme* l);
     void remove(lex_iter beg, lex_iter end);
     bool is_defined(std::string_view name);
     void error(lexeme* l, const char* msg);
+    constexpr auto errors() const {
+        return std::ranges::subrange{&*_errors.begin(), &*_errors.end()};
+    }
 
 private:
     std::ostream* _out;
-    std::vector<fs::path> _include_dirs;
+    file_service* _fserv;
     std::unique_ptr<struct expression_parser> _expr_parser;
     
     lexeme_list _lexemes;
