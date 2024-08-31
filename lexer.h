@@ -126,7 +126,12 @@ public:
         lexeme_list lexemes;
         std::vector<lex_err> errors;
     };
-    result run(std::vector<char>& v) { return run(&*v.begin(), &*v.end()); }
+    result run(std::vector<char>& v) { 
+        if (v.size() == 0)
+            return run(nullptr, nullptr);
+        else
+            return run(&*v.begin(), &*v.begin() + v.size());
+    }
     result run(char* begin, char* end);
 
 private:
