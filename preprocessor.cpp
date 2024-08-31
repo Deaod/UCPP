@@ -724,8 +724,8 @@ bool preprocessor::preprocess_file(std::string_view in, std::string_view cwd) {
 
         auto l2 = lex_result.lexemes.begin();
         _lexemes.splice(l, lex_result.lexemes);
-            l = l2;
-        }
+        l = l2;
+    }
 
 dispatch:
     if (l == end) {
