@@ -1,0 +1,62 @@
+{
+    "version": 3,
+    "cmakeMinimumRequired": {
+        "major": 3,
+        "minor": 21,
+        "patch": 0
+    },
+    "configurePresets": [
+        {
+            "name": ".base",
+            "hidden": true,
+            "generator": "Ninja",
+            "toolchainFile": "${sourceDir}/vcpkg/scripts/buildsystems/vcpkg.cmake",
+            "binaryDir": "${sourceDir}/out/build/${presetName}",
+            "installDir": "${sourceDir}/out/install/${presetName}"
+        },
+        {
+            "name": ".msvc-x64",
+            "hidden": true,
+            "cacheVariables": {
+                "CMAKE_C_COMPILER": "cl.exe",
+                "CMAKE_CXX_COMPILER": "cl.exe",
+                "CMAKE_CXX_FLAGS": "/MP /utf-8 /validate-charset /W4 /arch:AVX2 /EHsc",
+                "CMAKE_CXX_FLAGS_DEBUG": "/MTd /Od /Gy /ZI /RTC1",
+                "CMAKE_CXX_FLAGS_RELEASE": "/MT /Ot /Oi /Oy /Ob3 /Gy /GF /Gw /GL /GS- /Zi /DNDEBUG",
+                "CMAKE_EXE_LINKER_FLAGS_DEBUG": "/INCREMENTAL /DEBUG /OPT:REF",
+                "CMAKE_EXE_LINKER_FLAGS_RELEASE": "/INCREMENTAL:NO /LTCG /DEBUG:FASTLINK /OPT:REF /OPT:ICF=3",
+                "VCPKG_TARGET_TRIPLET": "x64-windows-static"
+            },
+            "condition": {
+                "lhs": "${hostSystemName}",
+                "type": "equals",
+                "rhs": "Windows"
+            },
+            "architecture": {
+                "value": "x64",
+                "strategy": "external"
+            },
+            "vendor": {
+                "microsoft.com/VisualStudioSettings/CMake/1.0": {
+                    "intelliSenseMode": "windows-msvc-x64"
+                }
+            }
+        },
+        {
+            "name": "msvc-x64-debug",
+            "displayName": "MSVC x64 Debug",
+            "inherits": [ ".base", ".msvc-x64" ],
+            "cacheVariables": {
+                "CMAKE_BUILD_TYPE": "Debug"
+            }
+        },
+        {
+            "name": "msvc-x64-release",
+            "displayName": "MSVC x64 Release",
+            "inherits": [ ".base", ".msvc-x64" ],
+            "cacheVariables": {
+                "CMAKE_BUILD_TYPE": "Release"
+            }
+        }
+    ]
+}
