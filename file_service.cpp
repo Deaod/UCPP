@@ -83,6 +83,9 @@ load:
     std::fstream f{abs_p.c_str(), std::ios::in | std::ios::binary};
     f.read(c.data(), c.size());
 
+    if (c.size() == 0) {
+        c.push_back(' ');
+    }
     return _data->_file_cache.emplace_back(std::move(abs_p), &*c.begin(), &*c.begin() + c.size());
 }
 

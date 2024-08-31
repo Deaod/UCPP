@@ -646,7 +646,7 @@ private:
     T* create(Args&&... args) {
         //static_assert(std::is_trivially_destructible_v<T>);
 
-        if (_chunks == nullptr || (&*_chunks->data.end() - sizeof(T) < _chunks->head)) {
+        if (_chunks == nullptr || (_chunks->data.data() + _chunks->data.size() - sizeof(T) < _chunks->head)) {
             auto c = new chunk{};
             c->head = c->data.data();
             c->next = _chunks;
@@ -715,15 +715,10 @@ bool preprocessor::preprocess_file(std::string_view in, std::string_view cwd) {
             return false;
         }
 
-        auto l2 = l++;
+        auto l2 = lex_result.lexemes.begin();
         _lexemes.splice(l, lex_result.lexemes);
-        if (first_file) {
-            first_file = false;
-            l = _lexemes.begin();
-        } else {
             l = l2;
         }
-    }
 
 dispatch:
     if (l == end) {

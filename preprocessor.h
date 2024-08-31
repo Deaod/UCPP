@@ -78,7 +78,7 @@ public:
     bool is_defined(std::string_view name);
     void error(lexeme* l, const char* msg);
     constexpr auto errors() const {
-        return std::ranges::subrange{&*_errors.begin(), &*_errors.end()};
+        return std::ranges::subrange{&*_errors.begin(), &*_errors.begin() + _errors.size()};
     }
 
 private:
