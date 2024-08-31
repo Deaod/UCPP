@@ -834,8 +834,3 @@ void* allocate_lexeme_space() {
 
     return that;
 }
-
-tokenizer::result tokenizer::run(const boost::intrusive::list<lexeme>& lexemes) {
-
-    return {};
-}
