@@ -303,22 +303,21 @@ struct expression_parser {
         _preprocessor->error(l, msg);
     }
 
+#define PARSE_ERR(LEX,MSG) error(LEX, MSG_DEBUG "error: "   MSG)
+
     expression* parse(lex_iter beg, lex_iter end) {
-        auto begin = beg;
-        while (beg != end) {
-            if (beg->type != lexeme_type::IDENTIFIER) {
-                beg = next_lexeme(beg, end);
+        if (beg == end)
+            return nullptr;
+        
+        for (auto l = beg; l != end;) {
+            if (l->type != lexeme_type::IDENTIFIER || l->text != sym_defined) {
+                l = _preprocessor->replace_identifier(l);
                 continue;
             }
 
-            if (beg->text != sym_defined) {
-                beg = _preprocessor->replace_identifier(beg);
-                continue;
-            }
-
-            auto it = next_lexeme(beg, end);
+            auto it = next_lexeme(l, end);
             if (it == end) {
-                error(&*beg, "missing operand for operator \"defined\"");
+                PARSE_ERR(&*l, "missing operand for operator \"defined\"");
                 return nullptr;
             }
             bool paren_used = false;
@@ -326,42 +325,42 @@ struct expression_parser {
                 paren_used = true;
                 it = next_lexeme(it, end);
                 if (it == end) {
-                    error(&*beg, "missing operand for operator \"defined\"");
+                    PARSE_ERR(&*l, "missing operand for operator \"defined\"");
                     return nullptr;
                 }
             }
             if (it->type == lexeme_type::IDENTIFIER) {
-                beg = _preprocessor->insert(beg, create_lexeme(
-                    beg->file_path,
+                l = _preprocessor->insert(l, create_lexeme(
+                    l->file_path,
                     lexeme_type::DECIMAL,
-                    beg->line,
-                    beg->line_offset,
-                    beg->src_length,
+                    l->line,
+                    l->line_offset,
+                    l->src_length,
                     _preprocessor->is_defined(it->text) ? sym_one : sym_zero
                 ));
             } else {
-                error(&*it, "expected identifier");
+                PARSE_ERR(&*it, "expected identifier");
                 return nullptr;
             }
             if (paren_used) {
                 it = next_lexeme(it, end);
                 if (it == end) {
-                    error(&*it, "missing closing parenthesis");
+                    PARSE_ERR(&*it, "missing closing parenthesis");
                     return nullptr;
                 }
                 if (it->type != lexeme_type::CLOSE_PAREN) {
-                    error(&*it, "expected closing parenthesis");
+                    PARSE_ERR(&*it, "expected closing parenthesis");
                     return nullptr;
                 }
             }
-            auto rem_it = beg;
+            auto rem_it = l;
             _preprocessor->remove(++rem_it, ++it);
-            beg = it;
+            l = it;
         }
-        // 1) replace defined operator
-        // 2) resolve all macros, any remaining identifiers in expression cause errors
-        // 3) parse expression and return it
-        return or_expr(begin, end);
+
+        if (beg->type == lexeme_type::WHITESPACE || beg->type == lexeme_type::COMMENT)
+            beg = next_lexeme(beg, end);
+        return or_expr(beg, end);
     }
 
     expression* or_expr(lex_iter& l, lex_iter end) {
@@ -594,7 +593,10 @@ struct expression_parser {
     }
 
     expression* paren_expr(lex_iter& l, lex_iter end) {
-        if (l->type == lexeme_type::IDENTIFIER) {
+        if (l == end) {
+            PARSE_ERR(&*l, "expected token, but found none");
+            return nullptr;
+        } else if (l->type == lexeme_type::IDENTIFIER) {
             auto result = create<name_expression>(&*l);
             error(&*l, "undefined macro, substituting 0");
             l = next_lexeme(l, end);
@@ -603,7 +605,7 @@ struct expression_parser {
             u32 val = 0;
             auto err = std::from_chars(&*l->text.begin(), &*l->text.end(), val, 10);
             if (err.ec != std::errc{} || err.ptr != &*l->text.end()) {
-                error(&*l, "value too large");
+                PARSE_ERR(&*l, "value too large");
                 val = INT_MAX;
             }
             l = next_lexeme(l, end);
@@ -612,7 +614,7 @@ struct expression_parser {
             u32 val = 0;
             auto err = std::from_chars(&*l->text.begin(), &*l->text.end(), val, 8);
             if (err.ec != std::errc{} || err.ptr != &*l->text.end()) {
-                error(&*l, "value too large");
+                PARSE_ERR(&*l, "value too large");
                 val = INT_MAX;
             }
             l = next_lexeme(l, end);
@@ -621,7 +623,7 @@ struct expression_parser {
             u32 val = 0;
             auto err = std::from_chars(&l->text[2], &*l->text.end(), val, 16); // skip 0x/0X
             if (err.ec != std::errc{} || err.ptr != &*l->text.end()) {
-                error(&*l, "value too large");
+                PARSE_ERR(&*l, "value too large");
                 val = INT_MAX;
             }
             l = next_lexeme(l, end);
@@ -630,22 +632,20 @@ struct expression_parser {
             l = next_lexeme(l, end);
             auto result = or_expr(l, end);
             if (l->type != lexeme_type::CLOSE_PAREN) {
-                error(&*l, "missing )");
+                PARSE_ERR(&*l, "missing )");
                 // probably fine to infer closing parentheses at the end
                 return result;
             }
             l = next_lexeme(l, end);
             return result;
         }
-        error(&*l, "unexpected token");
+        PARSE_ERR(&*l, "unexpected token");
         return nullptr;
     }
 
 private:
     template<typename T, typename... Args>
     T* create(Args&&... args) {
-        //static_assert(std::is_trivially_destructible_v<T>);
-
         if (_chunks == nullptr || (_chunks->data.data() + _chunks->data.size() - sizeof(T) < _chunks->head)) {
             auto c = new chunk{};
             c->head = c->data.data();
@@ -665,6 +665,8 @@ private:
     };
     chunk* _chunks{};
     preprocessor* _preprocessor{};
+
+#undef PARSE_ERR
 };
 
 preprocessor::preprocessor(
@@ -1091,6 +1093,8 @@ eof:
         cur->write_to(*_out);
         return true;
     }
+
+#undef PP_ERR
 }
 
 lex_iter preprocessor::replace_identifier(lex_iter id_lex) {
@@ -1100,7 +1104,7 @@ lex_iter preprocessor::replace_identifier(lex_iter id_lex) {
         return id_lex;
     }
     if (id_lex->type != lexeme_type::IDENTIFIER)
-        return id_lex;
+        return ++id_lex;
 
     auto r = _defines.find(id_lex->text);
     if (r != _defines.end() &&
@@ -1124,8 +1128,10 @@ lex_iter preprocessor::replace_identifier(lex_iter id_lex) {
 
         auto rem_iter = id_lex++;
         _lexemes.erase_and_dispose(rem_iter, lexeme::disposer{});
+        return id_lex;
+    } else {
+        return ++id_lex;
     }
-    return id_lex;
 }
 
 lex_iter preprocessor::insert(lex_iter where, lexeme* l) {
