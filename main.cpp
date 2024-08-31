@@ -94,7 +94,11 @@ int main(int argc, char* argv[]) {
     }
 
     preprocessor pp{ out, &fileser, defines };
-    if (pp.preprocess_file(in_path, fs::current_path().string()) == false) {
+    bool success = pp.preprocess_file(in_path, fs::current_path().string());
+    for (auto&& s : pp.warnings()) {
+        std::cout << s;
+    }
+    if (success == false) {
         for (auto&& s : pp.errors()) {
             std::cerr << s;
         }

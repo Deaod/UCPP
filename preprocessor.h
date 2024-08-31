@@ -77,8 +77,17 @@ public:
     void remove(lex_iter beg, lex_iter end);
     bool is_defined(std::string_view name);
     void error(lexeme* l, const char* msg);
+    void warn(lexeme* l, const char* msg);
+
     constexpr auto errors() const {
         return std::ranges::subrange{&*_errors.begin(), &*_errors.begin() + _errors.size()};
+    }
+
+    constexpr auto warnings() const {
+        if (_warns.size())
+            return std::ranges::subrange{&*_warns.begin(), &*_warns.begin() + _warns.size()};
+        else
+            return std::ranges::subrange<const std::string*>{};
     }
 
 private:
@@ -90,6 +99,7 @@ private:
     phmap::flat_hash_map<std::string, define, string_hash> _defines;
     std::vector<define*> _used_defines;
     std::vector<std::string> _errors;
+    std::vector<std::string> _warns;
 
     int _if_depth;
     int _erasing_depth;

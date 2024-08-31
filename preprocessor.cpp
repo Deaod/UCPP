@@ -303,7 +303,12 @@ struct expression_parser {
         _preprocessor->error(l, msg);
     }
 
+    void warn(lexeme* l, const char* msg) {
+        _preprocessor->warn(l, msg);
+    }
+
 #define PARSE_ERR(LEX,MSG) error(LEX, MSG_DEBUG "error: "   MSG)
+#define PARSE_WARN(LEX,MSG) warn(LEX, MSG_DEBUG "warning: " MSG)
 
     expression* parse(lex_iter beg, lex_iter end) {
         if (beg == end)
@@ -598,7 +603,7 @@ struct expression_parser {
             return nullptr;
         } else if (l->type == lexeme_type::IDENTIFIER) {
             auto result = create<name_expression>(&*l);
-            error(&*l, "undefined macro, substituting 0");
+            PARSE_WARN(&*l, "undefined macro, substituting 0");
             l = next_lexeme(l, end);
             return result;
         } else if (l->type == lexeme_type::DECIMAL) {
@@ -704,6 +709,7 @@ bool preprocessor::preprocess_file(std::string_view in, std::string_view cwd) {
         return false;
 
 #define PP_ERR(MSG) error(&*l, MSG_DEBUG "error: "   MSG)
+#define PP_WARN(MSG) warn(&*l, MSG_DEBUG "warning: " MSG)
 
     file:
     {
@@ -1088,6 +1094,7 @@ eof:
         return true;
     }
 
+#undef PP_WARN
 #undef PP_ERR
 }
 
@@ -1144,5 +1151,9 @@ bool preprocessor::is_defined(std::string_view name) {
 
 void preprocessor::error(lexeme* l, const char* msg) {
     _errors.push_back(std::format("{}({},{}): {}\n", l->file_path, l->line, l->line_offset, msg));
+}
+
+void preprocessor::warn(lexeme* l, const char* msg) {
+    _warns.push_back(std::format("{}({},{}): {}\n", l->file_path, l->line, l->line_offset, msg));
 }
 
