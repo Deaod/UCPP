@@ -21,7 +21,7 @@
                 "CMAKE_C_COMPILER": "cl.exe",
                 "CMAKE_CXX_COMPILER": "cl.exe",
                 "CMAKE_CXX_FLAGS": "/MP /utf-8 /validate-charset /W4 /arch:AVX2 /EHsc",
-                "CMAKE_CXX_FLAGS_DEBUG": "/MTd /Od /Gy /ZI /RTC1",
+                "CMAKE_CXX_FLAGS_DEBUG": "/MTd /Od /Gy /ZI /RTC1 /DDEBUG",
                 "CMAKE_CXX_FLAGS_RELEASE": "/MT /Ot /Oi /Oy /Ob3 /Gy /GF /Gw /GL /GS- /Zi /DNDEBUG",
                 "CMAKE_EXE_LINKER_FLAGS_DEBUG": "/INCREMENTAL /DEBUG /OPT:REF",
                 "CMAKE_EXE_LINKER_FLAGS_RELEASE": "/INCREMENTAL:NO /LTCG /DEBUG:FASTLINK /OPT:REF /OPT:ICF=3",

@@ -57,7 +57,7 @@ lexer::result lexer::run(char* begin, char* end) {
     do {                                                                \
         errors.emplace_back(                                            \
             std::string_view{ &*token_start, size_t(c - token_start) }, \
-            MSG,                                                        \
+            MSG_DEBUG "error: " MSG,                                    \
             token_line,                                                 \
             token_offset                                                \
         );                                                              \

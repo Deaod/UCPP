@@ -702,7 +702,7 @@ bool preprocessor::preprocess_file(std::string_view in, std::string_view cwd) {
     if (fcont.begin == nullptr)
         return false;
 
-#define PP_ERR(MSG) error(&*l, MSG)
+#define PP_ERR(MSG) error(&*l, MSG_DEBUG "error: "   MSG)
 
     file:
     {
