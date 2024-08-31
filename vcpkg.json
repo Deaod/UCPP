@@ -5,7 +5,7 @@
         "boost-system",
         "boost-intrusive",
         "boost-program-options",
-        "gtest",
+        "catch2",
         "xxhash",
         "parallel-hashmap"
     ]

@@ -1,73 +1,73 @@
 #include "lexer.h"
-#include <gtest/gtest.h>
+#include <catch.hpp>
 
-TEST(lexer_tests, no_content_returns_no_tokens) {
+TEST_CASE("Empty content returns no lexemes") {
     std::vector<char> c(std::size_t(0));
     lexer l{"test"};
     auto result = l.run(c);
 
-    ASSERT_EQ(result.lexemes.size(), 0);
+    REQUIRE(result.lexemes.size() == 0);
 }
 
-TEST(lexer_tests, whitespace_produces_WHITESPACE_token) {
-    std::vector<char> c{ ' ', '\t', '\v', '\f' };
+TEST_CASE("whitespace produces WHITESPACE lexemes") {
+    std::vector<char> c{' ', '\t', '\v', '\f'};
     lexer l{"test"};
     auto result = l.run(c);
 
-    ASSERT_EQ(result.lexemes.size(), 1);
-    ASSERT_EQ(result.lexemes.begin()->type, lexeme_type::WHITESPACE);
+    REQUIRE(result.lexemes.size() == 1);
+    REQUIRE(result.lexemes.begin()->type == lexeme_type::WHITESPACE);
 }
 
-TEST(lexer_tests, line_feed_produces_LINE_END_token) {
-    std::vector<char> c{ '\n' };
+TEST_CASE("line feed produces LINE_END lexeme") {
+    std::vector<char> c{'\n'};
     lexer l{"test"};
     auto result = l.run(c);
 
-    ASSERT_EQ(result.lexemes.size(), 1);
-    ASSERT_EQ(result.lexemes.begin()->type, lexeme_type::LINE_END);
+    REQUIRE(result.lexemes.size() == 1);
+    REQUIRE(result.lexemes.begin()->type == lexeme_type::LINE_END);
 }
 
-TEST(lexer_tests, carriage_return_produces_LINE_END_token) {
-    std::vector<char> c{ '\r' };
+TEST_CASE("carriage return produces LINE_END lexeme") {
+    std::vector<char> c{'\r'};
     lexer l{"test"};
     auto result = l.run(c);
 
-    ASSERT_EQ(result.lexemes.size(), 1);
-    ASSERT_EQ(result.lexemes.begin()->type, lexeme_type::LINE_END);
+    REQUIRE(result.lexemes.size() == 1);
+    REQUIRE(result.lexemes.begin()->type == lexeme_type::LINE_END);
 }
 
-TEST(lexer_tests, carriage_return_followed_by_line_feed_produces_LINE_END_token) {
-    std::vector<char> c{ '\r', '\n' };
+TEST_CASE("carriage return followed by line feed produces LINE_END lexeme") {
+    std::vector<char> c{'\r', '\n'};
     lexer l{"test"};
     auto result = l.run(c);
 
-    ASSERT_EQ(result.lexemes.size(), 1);
-    ASSERT_EQ(result.lexemes.begin()->type, lexeme_type::LINE_END);
+    REQUIRE(result.lexemes.size() == 1);
+    REQUIRE(result.lexemes.begin()->type == lexeme_type::LINE_END);
 }
 
-TEST(lexer_tests, zero_produces_OCTAL_token) {
-    std::vector<char> c{ '0' };
+TEST_CASE("zero produces OCTAL lexeme") {
+    std::vector<char> c{'0'};
     lexer l{"test"};
     auto result = l.run(c);
 
-    ASSERT_EQ(result.lexemes.size(), 1);
-    ASSERT_EQ(result.lexemes.begin()->type, lexeme_type::OCTAL);
+    REQUIRE(result.lexemes.size() == 1);
+    REQUIRE(result.lexemes.begin()->type == lexeme_type::OCTAL);
 }
 
-TEST(lexer_tests, zero_followed_by_dot_produces_FLOAT_token) {
-    std::vector<char> c{ '0', '.' };
+TEST_CASE("zero followed by dot produces FLOAT lexeme") {
+    std::vector<char> c{'0', '.'};
     lexer l{"test"};
     auto result = l.run(c);
 
-    ASSERT_EQ(result.lexemes.size(), 1);
-    ASSERT_EQ(result.lexemes.begin()->type, lexeme_type::FLOAT);
+    REQUIRE(result.lexemes.size() == 1);
+    REQUIRE(result.lexemes.begin()->type == lexeme_type::FLOAT);
 }
 
-TEST(lexer_tests, zero_followed_by_dot_f_produces_FLOAT_token) {
-    std::vector<char> c{ '0', '.', 'f' };
+TEST_CASE("zero followed by dot f produces FLOAT lexeme") {
+    std::vector<char> c{'0', '.', 'f'};
     lexer l{"test"};
     auto result = l.run(c);
 
-    ASSERT_EQ(result.lexemes.size(), 1);
-    ASSERT_EQ(result.lexemes.begin()->type, lexeme_type::FLOAT);
+    REQUIRE(result.lexemes.size() == 1);
+    REQUIRE(result.lexemes.begin()->type == lexeme_type::FLOAT);
 }
