@@ -20,20 +20,14 @@ find_package(Catch2 CONFIG REQUIRED)
 
 add_executable(UCPP
     "main.cpp"
-    "preprocessor.h"
     "preprocessor.cpp"
-    "types.h"
-    "lexer.h"
     "lexer.cpp"
-    "scope_guard.h"
-    "file_service.h"
     "file_service.cpp")
 set_target_properties(UCPP PROPERTIES CXX_STANDARD 23)
 target_include_directories(UCPP PRIVATE Boost_INCLUDE_DIR ${PARALLEL_HASHMAP_INCLUDE_DIRS} xxHash_INCLUDE_DIR)
 target_link_libraries(UCPP PRIVATE Boost::boost Boost::program_options Boost::system)
 
 add_executable(LexerTest
-    "lexer.h"
     "lexer.cpp"
     "lexer_test.cpp")
 set_target_properties(LexerTest PROPERTIES CXX_STANDARD 23)
