@@ -93,7 +93,7 @@ struct lexeme : boost::intrusive::list_base_hook<> {
     void write_to(std::ostream& os);
 
     struct disposer {
-        void operator()(lexeme* l) const {}
+        void operator()(lexeme*) const {}
     };
 };
 
