@@ -6,6 +6,8 @@
 #include <filesystem>
 namespace fs = std::filesystem;
 
+#include <parallel_hashmap/phmap.h>
+
 constexpr const auto lf = "\n";
 
 struct filesystem_service_data {
@@ -84,3 +86,41 @@ load:
     return _data->_file_cache.emplace_back(std::move(abs_p), &*c.begin(), &*c.begin() + c.size());
 }
 
+struct memory_file_service_data {
+    phmap::flat_hash_map<std::string, std::string> file_store;
+};
+
+memory_file_service::memory_file_service() : _data{std::make_unique<memory_file_service_data>()} {}
+
+memory_file_service::~memory_file_service() {}
+
+bool memory_file_service::add_file(std::string_view path, std::string_view content) {
+    std::string strpath{path};
+    auto it = _data->file_store.find(strpath);
+    if (it != _data->file_store.end())
+        return false;
+
+    _data->file_store.emplace(std::move(strpath), content);
+    return true;
+}
+
+std::string memory_file_service::remove_filename(std::string_view path) {
+    auto off = path.find_last_of("\\/");
+    if (off >= 0)
+        return std::string{path.substr(0, off + 1)};
+
+    return std::string{path};
+}
+
+bool memory_file_service::file_exists(std::string_view path) {
+    return _data->file_store.find(path) != _data->file_store.end();
+}
+
+file_content memory_file_service::resolve_load(std::string_view, std::string_view path) {
+    std::string strpath{path};
+    auto it = _data->file_store.find(strpath);
+    if (it == _data->file_store.end())
+        return {"", nullptr, nullptr};
+
+    return {std::move(strpath), &*it->second.begin(), &*it->second.begin() + it->second.size()};
+}
