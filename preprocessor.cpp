@@ -603,8 +603,8 @@ struct expression_parser {
             return result;
         } else if (l->type == lexeme_type::DECIMAL) {
             u32 val = 0;
-            auto err = std::from_chars(&*l->text.begin(), &*l->text.end(), val, 10);
-            if (err.ec != std::errc{} || err.ptr != &*l->text.end()) {
+            auto err = std::from_chars(l->text.data(), l->text.data() + l->text.size(), val, 10);
+            if (err.ec != std::errc{} || err.ptr != l->text.data() + l->text.size()) {
                 PARSE_ERR(&*l, "value too large");
                 val = INT_MAX;
             }
@@ -612,8 +612,8 @@ struct expression_parser {
             return create<literal_expression>(val);
         } else if (l->type == lexeme_type::OCTAL) {
             u32 val = 0;
-            auto err = std::from_chars(&*l->text.begin(), &*l->text.end(), val, 8);
-            if (err.ec != std::errc{} || err.ptr != &*l->text.end()) {
+            auto err = std::from_chars(l->text.data(), l->text.data() + l->text.size(), val, 8);
+            if (err.ec != std::errc{} || err.ptr != l->text.data() + l->text.size()) {
                 PARSE_ERR(&*l, "value too large");
                 val = INT_MAX;
             }
@@ -621,8 +621,8 @@ struct expression_parser {
             return create<literal_expression>(val);
         } else if (l->type == lexeme_type::HEXADECIMAL) {
             u32 val = 0;
-            auto err = std::from_chars(&l->text[2], &*l->text.end(), val, 16); // skip 0x/0X
-            if (err.ec != std::errc{} || err.ptr != &*l->text.end()) {
+            auto err = std::from_chars(l->text.data() + 2, l->text.data() + l->text.size(), val, 16); // skip 0x/0X
+            if (err.ec != std::errc{} || err.ptr != l->text.data() + l->text.size()) {
                 PARSE_ERR(&*l, "value too large");
                 val = INT_MAX;
             }
@@ -699,7 +699,6 @@ bool preprocessor::preprocess_file(std::string_view in, std::string_view cwd) {
     auto dir_id = l;
     auto include_content = l;
     auto define_name = l;
-    bool first_file = true;
 
     if (fcont.begin == nullptr)
         return false;
@@ -807,11 +806,10 @@ else_directive:
         } else {
             _erasing_depth = _if_depth;
         }
-        while (l != end && l->type == lexeme_type::LINE_END) {
+        while (++l != end && l->type != lexeme_type::LINE_END) {
             if (l->type != lexeme_type::WHITESPACE && l->type != lexeme_type::COMMENT) {
                 PP_ERR("unexpected token");
             }
-            ++l;
         }
         remove(dir_start, l);
     }
@@ -846,11 +844,10 @@ endif_directive:
             _erasing_depth = 0;
         }
         _if_depth -= 1;
-        while (l != end && l->type == lexeme_type::LINE_END) {
+        while (++l != end && l->type != lexeme_type::LINE_END) {
             if (l->type != lexeme_type::WHITESPACE && l->type != lexeme_type::COMMENT) {
                 PP_ERR("unexpected token");
             }
-            ++l;
         }
         remove(dir_start, l);
     } else {
@@ -894,11 +891,10 @@ ifdef_directive:
 
 ifdef_define:
     {
-        while (l != end && l->type != lexeme_type::LINE_END) {
+        while (++l != end && l->type != lexeme_type::LINE_END) {
             if (l->type != lexeme_type::WHITESPACE && l->type != lexeme_type::COMMENT) {
                 PP_ERR("unexpected token");
             }
-            ++l;
         }
         _if_depth += 1;
         if (_if_depth >= _else_seen.size())
@@ -932,11 +928,10 @@ undef_define:
         }
         _defines.erase(def);
     }
-    while (l != end && l->type == lexeme_type::LINE_END) {
+    while (++l != end && l->type != lexeme_type::LINE_END) {
         if (l->type != lexeme_type::WHITESPACE && l->type != lexeme_type::COMMENT) {
             PP_ERR("unexpected token");
         }
-        ++l;
     }
     remove(dir_start, l);
     goto dispatch;
@@ -983,11 +978,10 @@ ifndef_directive:
 
 ifndef_define:
     {
-        while (l != end && l->type == lexeme_type::LINE_END) {
+        while (++l != end && l->type != lexeme_type::LINE_END) {
             if (l->type != lexeme_type::WHITESPACE && l->type != lexeme_type::COMMENT) {
                 PP_ERR("unexpected token");
             }
-            ++l;
         }
         _if_depth += 1;
         if (_if_depth >= _else_seen.size())
