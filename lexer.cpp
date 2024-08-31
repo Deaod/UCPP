@@ -728,9 +728,6 @@ close_bracket:
     goto dispatch;
 
 eof:
-    if (lexemes.rbegin()->type != lexeme_type::LINE_END)
-        lexemes.push_back(*create_lexeme(file_path, lexeme_type::LINE_END, line, i32(c - line_start), 1, "\n"));
-
     return { std::move(lexemes), errors };
 
 #undef PRODUCE
